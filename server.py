@@ -539,24 +539,35 @@ def _http_get(url, timeout=15):
         return resp.read().decode("utf-8", errors="replace")
 
 
-def _cache_get(conn, key, ttl):
-    """Gibt (payload, ist_noch_frisch) zurueck — alter Cache bleibt als Fallback nutzbar."""
+def _cache_raw(conn, key):
     row = conn.execute("SELECT value FROM sync_meta WHERE key=?", (key,)).fetchone()
     if not row:
+        return None
+    try:
+        return json.loads(row["value"])
+    except json.JSONDecodeError:
+        return None
+
+
+def _cache_get(conn, key, ttl):
+    """Gibt (payload, ist_noch_frisch) zurueck — alter Cache bleibt als Fallback nutzbar."""
+    data = _cache_raw(conn, key)
+    if not data:
         return None, False
     try:
-        data = json.loads(row["value"])
         fetched = datetime.datetime.fromisoformat(data["fetched"])
-    except (json.JSONDecodeError, KeyError, ValueError):
+    except (KeyError, ValueError):
         return None, False
     return data.get("payload"), datetime.datetime.now() - fetched <= ttl
 
 
 def _cache_set(conn, key, payload):
+    fetched_at = datetime.datetime.now().isoformat()
     with conn:
         conn.execute("""INSERT INTO sync_meta (key, value) VALUES (?,?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
-            (key, json.dumps({"fetched": datetime.datetime.now().isoformat(), "payload": payload})))
+            (key, json.dumps({"fetched": fetched_at, "payload": payload})))
+    return fetched_at
 
 
 def fetch_news():
@@ -611,15 +622,19 @@ def fetch_markets():
 
 
 def cached_external(conn, key, ttl, fetcher, force=False):
+    """Gibt (payload, fetchedAtIso) zurueck, damit das Frontend anzeigen kann, wann zuletzt echt abgerufen wurde."""
     payload, fresh = _cache_get(conn, key, ttl)
     if fresh and not force:
-        return payload
+        raw = _cache_raw(conn, key)
+        return payload, (raw or {}).get("fetched")
     try:
         payload = fetcher()
-        _cache_set(conn, key, payload)
+        fetched_at = _cache_set(conn, key, payload)
     except Exception as e:
         print(f"[{key}] Abruf fehlgeschlagen, nutze alten Cache: {e}")
-    return payload or []
+        raw = _cache_raw(conn, key)
+        fetched_at = (raw or {}).get("fetched")
+    return payload or [], fetched_at
 
 
 # ── KI-ASSISTENT: TOOLS ──────────────────────────────────────────────
@@ -1030,13 +1045,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/news":
             conn = get_db()
             try:
-                self._json(200, {"items": cached_external(conn, "news_cache", NEWS_CACHE_TTL, fetch_news, force=force)})
+                items, fetched_at = cached_external(conn, "news_cache", NEWS_CACHE_TTL, fetch_news, force=force)
+                self._json(200, {"items": items, "fetchedAt": fetched_at})
             finally:
                 conn.close()
         elif path == "/markets":
             conn = get_db()
             try:
-                self._json(200, {"quotes": cached_external(conn, "markets_cache", MARKETS_CACHE_TTL, fetch_markets, force=force)})
+                quotes, fetched_at = cached_external(conn, "markets_cache", MARKETS_CACHE_TTL, fetch_markets, force=force)
+                self._json(200, {"quotes": quotes, "fetchedAt": fetched_at})
             finally:
                 conn.close()
         else:

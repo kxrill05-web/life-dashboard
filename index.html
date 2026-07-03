@@ -109,6 +109,7 @@ body{
 .card-head h3{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .card-head.clickable{cursor:pointer}
 .card-tag{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--muted);font-weight:600;text-transform:uppercase}
+.card-updated{font-size:10px;color:var(--muted2);white-space:nowrap}
 .card-link{font-size:11px;color:var(--accent2);cursor:pointer;background:none;border:none;font-family:inherit}
 .card-link:hover{text-decoration:underline}
 .chev{display:inline-block;font-size:11px;color:var(--muted);transition:transform .25s ease}
@@ -487,7 +488,7 @@ body{
 
     <div class="card-grid ov-grid">
       <div class="card news-card">
-        <div class="card-head"><h3>News heute</h3><span class="card-tag">Tagesschau</span></div>
+        <div class="card-head"><h3>News heute</h3><span style="display:flex;align-items:center;gap:7px"><span class="card-updated" id="news-updated"></span><span class="card-tag">Tagesschau</span></span></div>
         <div id="ov-news-body"></div>
       </div>
 
@@ -506,7 +507,7 @@ body{
       </div>
 
       <div class="card markets-card">
-        <div class="card-head"><h3>Märkte</h3><span class="card-tag">Live</span></div>
+        <div class="card-head"><h3>Märkte</h3><span style="display:flex;align-items:center;gap:7px"><span class="card-updated" id="markets-updated"></span><span class="card-tag">Live</span></span></div>
         <div id="ov-markets-body"></div>
       </div>
 
@@ -856,6 +857,9 @@ const API_BASE = location.hostname.endsWith('github.io')
 let authToken = localStorage.getItem('ld_token') || '';
 function apiFetch(path, opts = {}){
   opts.headers = Object.assign({}, opts.headers, authToken ? {'X-Auth': authToken} : {});
+  // no-store: das sind immer Live-Daten (Termine, Kurse, News) — der Browser darf hier
+  // nie eine alte Antwort statt einer echten Netzwerk-Anfrage zeigen.
+  if(opts.cache === undefined) opts.cache = 'no-store';
   return fetch(API_BASE + path, opts).then(res => {
     if(res.status === 401){ showLogin(); throw new Error('nicht angemeldet'); }
     return res;
@@ -1881,13 +1885,21 @@ async function syncGarmin(){
 
 /* ── NEWS + MÄRKTE ── */
 let newsItems = [], marketQuotes = [], newsOpenIdx = null;
+let newsFetchedAt = null, marketsFetchedAt = null;
+function fmtUpdated(iso){
+  if(!iso) return '';
+  return 'Stand ' + new Date(iso).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+}
 async function loadExtras(force){
   const suffix = force ? '?force=1' : '';
   let ok = true;
   try{
     const [nRes, mRes] = await Promise.all([apiFetch('/news'+suffix), apiFetch('/markets'+suffix)]);
-    newsItems = (await nRes.json()).items || [];
-    marketQuotes = (await mRes.json()).quotes || [];
+    const nData = await nRes.json(), mData = await mRes.json();
+    newsItems = nData.items || [];
+    newsFetchedAt = nData.fetchedAt || null;
+    marketQuotes = mData.quotes || [];
+    marketsFetchedAt = mData.fetchedAt || null;
   }catch(e){
     ok = false;
     console.warn('News/Märkte nicht erreichbar.', e);
@@ -1904,6 +1916,8 @@ function toggleNews(i){
 function renderNews(){
   const el = document.getElementById('ov-news-body');
   if(!el) return;
+  const upd = document.getElementById('news-updated');
+  if(upd) upd.textContent = fmtUpdated(newsFetchedAt);
   el.innerHTML = newsItems.length ? newsItems.map((n,i) => `
     <div class="news-item ${newsOpenIdx===i?'open':''}">
       <div class="news-head" onclick="toggleNews(${i})">
@@ -1930,6 +1944,8 @@ function sparkSvg(points, up){
 function renderMarkets(){
   const el = document.getElementById('ov-markets-body');
   if(!el) return;
+  const upd = document.getElementById('markets-updated');
+  if(upd) upd.textContent = fmtUpdated(marketsFetchedAt);
   el.innerHTML = marketQuotes.length ? marketQuotes.map(q => {
     const up = (q.changePct || 0) >= 0;
     const chg = q.changePct == null ? '' : (up?'+':'') + q.changePct.toLocaleString('de-DE',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' %';
