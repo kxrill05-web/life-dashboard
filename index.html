@@ -78,7 +78,7 @@ body{
 .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:18px}
 .ov-grid{
   display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:0;
-  grid-template-areas:"news news markets markets" "sleep sleep train train" "journal journal todos todos" "upcoming upcoming upcoming upcoming";
+  grid-template-areas:"news news todos todos" "train train markets markets" "sleep sleep journal journal" "upcoming upcoming upcoming upcoming";
 }
 .ov-grid .card{margin-bottom:0}
 .news-card{grid-area:news}
@@ -368,9 +368,55 @@ body{
   .cal-day{min-height:58px;font-size:11px;padding:4px}
   .cal-pill{font-size:8.5px}
   .cal-dow{font-size:8.5px}
-  .modal{padding:20px}
   .plan-weekday{width:76px}
   .assistant-panel{width:calc(100vw - 44px)}
+  /* Termin-Modal kompakt & symmetrisch: Datum/Zeit-Felder haben auf iOS eine
+     eingebaute Mindestbreite und ragen sonst aus der Box raus */
+  .modal{padding:16px;border-radius:14px}
+  .modal h2{margin-bottom:12px}
+  .field{margin-bottom:10px}
+  .field-row{gap:8px}
+  .field-row .field{flex:1 1 0;min-width:0}
+  .field input,.field select{padding:8px 10px;font-size:12.5px}
+  .field input[type=date],.field input[type=time]{width:100%;min-width:0;-webkit-appearance:none;appearance:none;color-scheme:dark}
+  .priority-opt{padding:7px 6px;font-size:11px;min-width:0}
+}
+
+/* ── PERFORMANCE-MODUS FÜR TOUCH-GERÄTE ──
+   Echtzeit-Blur (backdrop-filter) ist auf Handy-GPUs zu teuer (Lag beim Scrollen).
+   Der Glas-Look bleibt aber erhalten: durchscheinende Karten + farbige Glow-Flächen,
+   nur ohne Live-Weichzeichner. Desktop komplett unverändert. */
+@media (hover: none) and (pointer: coarse){
+  *{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+  body{background-attachment:scroll}
+  /* Blobs bleiben sichtbar, aber als vorberechneter Farbverlauf statt filter:blur(120px) */
+  .blob{filter:none}
+  .blob.b1{background:radial-gradient(circle,rgba(108,99,255,.30) 0%,rgba(108,99,255,0) 68%);opacity:1}
+  .blob.b2{background:radial-gradient(circle,rgba(63,185,80,.18) 0%,rgba(63,185,80,0) 68%);opacity:1}
+  .card,.nav-item{will-change:auto}
+  /* halbtransparent, damit der Glow durchscheint = Glas-Gefühl ohne Blur */
+  .card{background:linear-gradient(155deg,rgba(38,36,62,.72),rgba(16,15,28,.86));box-shadow:none}
+  .card:hover{box-shadow:none}
+  .topnav{background:rgba(24,22,42,.88)}
+  .review-banner{background:rgba(56,44,20,.9)}
+  .toast{background:rgba(30,28,48,.96)}
+  .modal,.login-card{background:linear-gradient(155deg,rgba(32,30,52,.97),rgba(14,13,24,.99))}
+  .overlay,.login-overlay{backdrop-filter:none;-webkit-backdrop-filter:none}
+  .assistant-panel{background:linear-gradient(155deg,rgba(30,28,50,.96),rgba(14,13,24,.98))}
+
+  /* Tipp-Feedback bewusst dezent: nichts springt oder kippt unterm Finger.
+     Hover-Effekte sind für die Maus gedacht — beim Tippen bleiben sie auf iOS
+     sonst "kleben" und wirken wie zu starke Animationen. */
+  .assistant-bubble{animation:none}
+  .assistant-bubble:hover{transform:none}
+  .mood-opt:hover{transform:none;opacity:.4}
+  .mood-opt.active{opacity:1;transform:scale(1.1)}
+  .nav-item:hover{background:transparent;color:var(--muted)}
+  .nav-item.active,.nav-item.active:hover{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+  .check-item:hover,.news-head:hover{background:transparent}
+  .cal-day:hover{background:rgba(5,5,10,.5)}
+  .cal-day.today,.cal-day.today:hover{background:rgba(108,99,255,.1)}
+  .card:hover{border-color:var(--border)}
 }
 </style>
 </head>
@@ -410,6 +456,20 @@ body{
         <div id="ov-news-body"></div>
       </div>
 
+      <div class="card todos-card">
+        <div class="card-head"><h3>Heutige To-Dos</h3><button class="card-link" onclick="switchView('todos')">Alle anzeigen →</button></div>
+        <div class="quick-add">
+          <input type="text" id="ov-todo-input" placeholder="Neuer Punkt für heute…">
+          <button onclick="addTodoFromInput('ov-todo-input')">+</button>
+        </div>
+        <ul class="check-list" id="ov-todo-list"></ul>
+      </div>
+
+      <div class="card train-card">
+        <div class="card-head"><h3>Heutiges Training</h3><button class="card-link" onclick="switchView('training')">Plan öffnen →</button></div>
+        <div id="ov-training-body"></div>
+      </div>
+
       <div class="card markets-card">
         <div class="card-head"><h3>Märkte</h3><span class="card-tag">Live</span></div>
         <div id="ov-markets-body"></div>
@@ -418,11 +478,6 @@ body{
       <div class="card sleep-card">
         <div class="card-head"><h3>Schlaf</h3><span class="card-tag">Garmin</span></div>
         <div id="ov-sleep-body"></div>
-      </div>
-
-      <div class="card train-card">
-        <div class="card-head"><h3>Heutiges Training</h3><button class="card-link" onclick="switchView('training')">Plan öffnen →</button></div>
-        <div id="ov-training-body"></div>
       </div>
 
       <div class="card journal-card" id="journal-card">
@@ -474,15 +529,6 @@ body{
           </div>
           <div id="journal-entries-list"></div>
         </div>
-      </div>
-
-      <div class="card todos-card">
-        <div class="card-head"><h3>Heutige To-Dos</h3><button class="card-link" onclick="switchView('todos')">Alle anzeigen →</button></div>
-        <div class="quick-add">
-          <input type="text" id="ov-todo-input" placeholder="Neuer Punkt für heute…">
-          <button onclick="addTodoFromInput('ov-todo-input')">+</button>
-        </div>
-        <ul class="check-list" id="ov-todo-list"></ul>
       </div>
 
       <div class="card upcoming-card">
@@ -1743,7 +1789,11 @@ if(SpeechRec){
   assistantRecognition.continuous = false;
   assistantRecognition.interimResults = false;
 }
-let assistantBusy = false;
+/* Gesprächsmodus: nach jeder gesprochenen Antwort hört die KI automatisch wieder zu,
+   bis Kirill das Gespräch beendet (Tipp auf die Kugel oder den Mikro-Button)
+   oder einfach nichts mehr sagt. Kein erneutes Antippen pro Runde mehr. */
+let assistantPhase = 'idle'; // idle | listening | thinking | speaking
+let conversationOn = false;
 
 function toggleAssistantPanel(){
   document.getElementById('assistant-panel').classList.toggle('open');
@@ -1763,14 +1813,14 @@ function orbIdle(afterFirst){
   document.getElementById('orb-svg').style.opacity = '1';
   document.getElementById('orb-ring1').style.display = 'none';
   document.getElementById('orb-ring2').style.display = 'none';
-  document.getElementById('assistant-state-label').textContent = afterFirst ? 'tippen für die nächste Frage' : 'tippen zum Sprechen';
+  document.getElementById('assistant-state-label').textContent = afterFirst ? 'Gespräch beendet – tippen für ein neues' : 'tippen zum Sprechen';
 }
 function orbListen(){
   setOrbSpeed('8s','10s','13s','1.1s');
   document.getElementById('orb-svg').style.opacity = '1';
   document.getElementById('orb-ring1').style.display = 'block';
   document.getElementById('orb-ring2').style.display = 'block';
-  document.getElementById('assistant-state-label').textContent = 'hört zu';
+  document.getElementById('assistant-state-label').textContent = 'hört zu · tippen beendet das Gespräch';
 }
 function orbThink(){
   setOrbSpeed('70s','85s','100s','2.6s');
@@ -1803,18 +1853,33 @@ function addAssistantLine(role, text, model, hasAction){
 }
 
 function startAssistantTurn(){
-  if(assistantBusy) return;
+  // Tipp auf die Kugel: startet das Gespräch, beendet es beim Zuhören,
+  // oder unterbricht die KI beim Sprechen (dann hört sie sofort wieder zu).
   if(!assistantRecognition){
     showToast('Sprach-Erkennung wird von diesem Browser nicht unterstützt – Chrome empfehlenswert.');
     return;
   }
-  assistantBusy = true;
+  if(assistantPhase === 'idle'){
+    conversationOn = true;
+    assistantListen();
+  } else if(assistantPhase === 'listening'){
+    endConversation(true);
+  } else if(assistantPhase === 'speaking'){
+    speechSynthesis.cancel();
+    assistantListen();
+  }
+  // während 'thinking' macht ein Tipp nichts
+}
+
+function assistantListen(){
+  assistantPhase = 'listening';
   orbListen();
   let gotResult = false;
   assistantRecognition.onresult = function(e){
     gotResult = true;
     const transcript = e.results[0][0].transcript;
     addAssistantLine('user', transcript);
+    assistantPhase = 'thinking';
     orbThink();
     apiFetch('/assistant', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1822,23 +1887,23 @@ function startAssistantTurn(){
     }).then(res => res.json()).then(data => {
       if(data.error){
         showToast('⚠️ ' + data.error);
-        assistantBusy = false;
-        orbIdle(false);
+        endConversation(false);
         return;
       }
+      assistantPhase = 'speaking';
       orbSpeak(data.model);
       addAssistantLine('assistant', data.reply, data.model, (data.actions||[]).length > 0);
       loadState();
       const utter = new SpeechSynthesisUtterance(data.reply);
       utter.lang = 'de-DE';
-      utter.onend = function(){ assistantBusy = false; orbIdle(true); };
-      utter.onerror = function(){ assistantBusy = false; orbIdle(true); };
+      // Nach dem Aussprechen automatisch wieder zuhören — wie ein echtes Gespräch
+      utter.onend = function(){ if(conversationOn && assistantPhase === 'speaking') assistantListen(); };
+      utter.onerror = function(){ if(conversationOn && assistantPhase === 'speaking') assistantListen(); };
       speechSynthesis.speak(utter);
     }).catch(e => {
       console.warn('Assistent nicht erreichbar.', e);
       showToast('⚠️ Konnte den Assistenten nicht erreichen – läuft der Server noch?');
-      assistantBusy = false;
-      orbIdle(false);
+      endConversation(false);
     });
   };
   assistantRecognition.onerror = function(e){
@@ -1846,20 +1911,25 @@ function startAssistantTurn(){
     if(e.error !== 'no-speech' && e.error !== 'aborted'){
       showToast(e.error === 'not-allowed' ? 'Mikrofon-Zugriff verweigert.' : 'Spracherkennung hat nicht geklappt, nochmal versuchen.');
     }
-    assistantBusy = false;
-    orbIdle(false);
+    // nichts gesagt = Gespräch ist vorbei
+    if(assistantPhase === 'listening') endConversation(true);
   };
   assistantRecognition.onend = function(){
-    if(!gotResult && assistantBusy){ assistantBusy = false; orbIdle(false); }
+    if(!gotResult && assistantPhase === 'listening') endConversation(true);
   };
   assistantRecognition.start();
 }
 
+function endConversation(hadConversation){
+  conversationOn = false;
+  assistantPhase = 'idle';
+  try{ assistantRecognition && assistantRecognition.abort(); }catch(_){}
+  orbIdle(hadConversation);
+}
+
 function stopAssistantSpeaking(){
   speechSynthesis.cancel();
-  if(assistantRecognition) assistantRecognition.stop();
-  assistantBusy = false;
-  orbIdle(false);
+  endConversation(false);
 }
 
 function renderVerlaufPage(){
@@ -1891,6 +1961,9 @@ function attachTilt(el, maxTiltDeg){
 function initTilt(){
   if(initTilt._done) return;
   initTilt._done = true;
+  // Auf Touch-Geräten gar kein Kippen: iOS feuert bei Fingertipps mousemove-Events,
+  // dadurch "springen" die Karten unterm Finger — genau das soll nicht passieren.
+  if(window.matchMedia('(hover: none)').matches) return;
   // Kalender-Karte kippt nur minimal (−70 %), damit die Buttons oben links klickbar bleiben
   document.querySelectorAll('.card').forEach(el => attachTilt(el, el.closest('#view-calendar') ? 1.8 : 6));
   document.querySelectorAll('.nav-item').forEach(el => attachTilt(el, 9));
