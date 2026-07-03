@@ -189,6 +189,12 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT
         );
+        CREATE TABLE IF NOT EXISTS categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0
+        );
     """)
     with conn:
         for day in WEEKDAYS:
@@ -207,6 +213,16 @@ def init_db():
         _ensure_column(conn, "garmin_days", "vo2max", "REAL")
         _ensure_column(conn, "garmin_days", "fitness_age", "REAL")
         _ensure_column(conn, "calendar_events", "end_date", "TEXT")
+        _ensure_column(conn, "calendar_events", "note", "TEXT")
+        # Die 4 Standard-Kategorien nur beim allerersten Start anlegen —
+        # danach verwaltet Kirill sie selbst (löschen/hinzufügen über die UI)
+        if conn.execute("SELECT COUNT(*) AS n FROM categories").fetchone()["n"] == 0:
+            for cid, name, color, pos in [("trading", "Trading", "#6c63ff", 0),
+                                          ("schule", "Schule", "#4dabf7", 1),
+                                          ("sport", "Sport", "#2dd4bf", 2),
+                                          ("privat", "Privat", "#ff8fa3", 3)]:
+                conn.execute("INSERT INTO categories (id, name, color, position) VALUES (?,?,?,?) "
+                             "ON CONFLICT (id) DO NOTHING", (cid, name, color, pos))
     conn.close()
 
 
@@ -216,9 +232,11 @@ def load_state():
              for r in conn.execute("SELECT * FROM todos")]
     events = [dict(id=r["id"], title=r["title"], date=r["event_date"], endDate=r["end_date"], time=r["event_time"],
                    recurrence=r["recurrence"], interval=r["recurrence_interval"], priority=r["priority"],
-                   category=r["category"],
+                   category=r["category"], note=r["note"],
                    source=r["source"], icloudUid=r["icloud_uid"], exceptions=json.loads(r["exceptions"] or "[]"))
               for r in conn.execute("SELECT * FROM calendar_events")]
+    categories = [dict(id=r["id"], name=r["name"], color=r["color"])
+                  for r in conn.execute("SELECT * FROM categories ORDER BY position")]
     training_plan = {r["weekday"]: {"sessionType": r["session_type"], "description": r["description"],
                                      "options": json.loads(r["options"] or "[]")}
                       for r in conn.execute("SELECT * FROM training_plan")}
@@ -246,7 +264,7 @@ def load_state():
     last_sync_row = conn.execute("SELECT value FROM sync_meta WHERE key='garmin_last_sync'").fetchone()
     fm_row = conn.execute("SELECT value FROM sync_meta WHERE key='fitness_metrics'").fetchone()
     conn.close()
-    return {"todos": todos, "events": events, "trainingPlan": training_plan, "trainingLog": training_log,
+    return {"todos": todos, "events": events, "categories": categories, "trainingPlan": training_plan, "trainingLog": training_log,
             "journalEntries": journal_entries, "goals": goals, "assistantLog": assistant_log,
             "garminDays": garmin_days, "garminActivities": garmin_activities, "supplementsLog": supplements_log,
             "fitnessMetrics": json.loads(fm_row["value"]) if fm_row else None,
@@ -272,11 +290,20 @@ def save_state(data):
                 except Exception as ex:
                     print(f"[save_state] iCloud-Push fuer '{e['title']}' fehlgeschlagen: {ex}")
             conn.execute("""INSERT INTO calendar_events
-                (id, title, event_date, end_date, event_time, recurrence, recurrence_interval, priority, category, source, icloud_uid, exceptions)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (id, title, event_date, end_date, event_time, recurrence, recurrence_interval, priority, category, note, source, icloud_uid, exceptions)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (e["id"], e["title"], e["date"], e.get("endDate"), e.get("time"), e.get("recurrence", "none"),
                  int(e.get("interval", 1)), e.get("priority", "small"), e.get("category", "privat"),
-                 e.get("source", "dashboard"), icloud_uid, json.dumps(e.get("exceptions", []))))
+                 e.get("note"), e.get("source", "dashboard"), icloud_uid, json.dumps(e.get("exceptions", []))))
+
+        # Kategorien nur ersetzen, wenn das Frontend welche mitschickt — schützt davor,
+        # dass ein noch offener Tab mit altem JavaScript die Liste leert
+        cats = data.get("categories")
+        if isinstance(cats, list) and cats:
+            conn.execute("DELETE FROM categories")
+            for i, c in enumerate(cats):
+                conn.execute("INSERT INTO categories (id, name, color, position) VALUES (?,?,?,?)",
+                             (c["id"], c["name"], c["color"], i))
 
         for day, entry in data.get("trainingPlan", {}).items():
             conn.execute("""INSERT INTO training_plan (weekday, session_type, description, options) VALUES (?,?,?,?)
@@ -623,14 +650,19 @@ def h_move_todo(conn, id, date):
     return f"To-Do verschoben auf {date}"
 
 
-def h_add_calendar_event(conn, title, date, time=None, end_date=None, recurrence='none', interval=1, priority='small', category='privat'):
+def h_add_calendar_event(conn, title, date, time=None, end_date=None, recurrence='none', interval=1, priority='small', category='privat', note=None):
     eid = 'id' + uuid.uuid4().hex[:12]
+    # Unbekannte Kategorie (z. B. von der KI erfunden oder inzwischen gelöscht) -> Privat bzw. erste vorhandene
+    if not conn.execute("SELECT id FROM categories WHERE id=?", (category,)).fetchone():
+        fb = (conn.execute("SELECT id FROM categories WHERE id='privat'").fetchone()
+              or conn.execute("SELECT id FROM categories ORDER BY position LIMIT 1").fetchone())
+        category = fb["id"] if fb else "privat"
     with conn:
         conn.execute("""INSERT INTO calendar_events
-            (id, title, event_date, end_date, event_time, recurrence, recurrence_interval, priority, category, source, icloud_uid, exceptions)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (id, title, event_date, end_date, event_time, recurrence, recurrence_interval, priority, category, note, source, icloud_uid, exceptions)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (eid, title, date, end_date if end_date and end_date > date else None, time,
-             recurrence, int(interval), priority, category, 'dashboard', None, '[]'))
+             recurrence, int(interval), priority, category, note, 'dashboard', None, '[]'))
     suffix = f" bis {end_date}" if end_date and end_date > date else (f" um {time}" if time else "")
     return f"Termin angelegt: {title} am {date}{suffix}"
 
@@ -719,7 +751,8 @@ TOOLS = {
             "recurrence": {"type": "string", "enum": ["none", "daily", "weekly", "monthly", "yearly"]},
             "interval": {"type": "integer", "description": "alle N Einheiten, Standard 1"},
             "priority": {"type": "string", "enum": ["small", "big"]},
-            "category": {"type": "string", "enum": ["trading", "schule", "sport", "privat"]},
+            "category": {"type": "string", "description": "Kategorie-id — eine aus 'kategorien' im Kontext, Standard: privat"},
+            "note": {"type": "string", "description": "Notiz zum Termin (Link, Adresse, Details), optional"},
         }, "required": ["title", "date"]},
         "handler": h_add_calendar_event,
     },
@@ -813,9 +846,11 @@ def gather_context(conn):
     journal = [dict(r) for r in conn.execute(
         "SELECT entry_date,mood,productivity,note FROM journal_entries ORDER BY entry_date DESC LIMIT 5")]
     supp_row = conn.execute("SELECT done FROM supplements_log WHERE date=?", (today.isoformat(),)).fetchone()
+    cats = [dict(r) for r in conn.execute("SELECT id,name FROM categories ORDER BY position")]
     return {
         "heute": today.isoformat(),
         "wochentag": WEEKDAYS[today.weekday()],
+        "kategorien": cats,
         "todos_naechste_tage": todos,
         "termine_naechste_2_wochen": events,
         "training_heute": dict(plan_row) if plan_row else None,
