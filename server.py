@@ -8,6 +8,8 @@ Endpunkte:
 Alles läuft lokal. Datenbank liegt als life_dashboard.db neben diesem Skript.
 """
 import datetime
+import hashlib
+import hmac
 import html
 import json
 import os
@@ -60,6 +62,10 @@ GARMIN_PASSWORD = ENV.get("GARMIN_PASSWORD", "")
 APPLE_ID_EMAIL = ENV.get("APPLE_ID_EMAIL", "")
 APPLE_APP_PASSWORD = ENV.get("APPLE_APP_PASSWORD", "")
 DATABASE_URL = ENV.get("DATABASE_URL", "")
+PAGE_PASSWORD = ENV.get("PAGE_PASSWORD", "")
+# Abgeleiteter Sitzungs-Token: wird nach erfolgreichem Login ans Frontend gegeben und
+# muss danach bei jeder Anfrage als X-Auth-Header mitkommen. Ohne PAGE_PASSWORD (lokal) kein Zwang.
+AUTH_TOKEN = hashlib.sha256(f"life-dashboard-session:{PAGE_PASSWORD}".encode()).hexdigest() if PAGE_PASSWORD else ""
 
 
 class _PGConn:
@@ -930,7 +936,12 @@ class Handler(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Auth")
+
+    def _authed(self):
+        if not PAGE_PASSWORD:  # lokal ohne gesetztes Passwort: kein Login-Zwang
+            return True
+        return hmac.compare_digest(self.headers.get("X-Auth", ""), AUTH_TOKEN)
 
     def _json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -953,6 +964,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if not self._authed():
+            self._json(401, {"error": "nicht angemeldet"})
+            return
         if self.path == "/state":
             try:
                 conn = get_db()
@@ -990,6 +1004,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/login":
+            data = self._read_json()
+            given = (data or {}).get("password", "")
+            if PAGE_PASSWORD and hmac.compare_digest(given, PAGE_PASSWORD):
+                self._json(200, {"token": AUTH_TOKEN})
+            else:
+                self._json(401, {"error": "falsches Passwort"})
+            return
+        if not self._authed():
+            self._json(401, {"error": "nicht angemeldet"})
+            return
         if self.path == "/state":
             data = self._read_json()
             if data is None:

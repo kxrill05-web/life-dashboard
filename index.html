@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; connect-src 'self' http://localhost:5006;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; connect-src 'self' http://localhost:5006 https://life-dashboard-8m9f.onrender.com;">
 <title>Life Dashboard</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -305,6 +305,22 @@ body{
 .sport-stat{font-size:22px;font-weight:700;font-family:monospace}
 .sport-sub{font-size:11.5px;color:var(--muted);margin-top:4px}
 .sport-stages{font-size:11px;color:var(--muted2);margin-top:8px;font-family:monospace}
+
+/* ── LOGIN ── */
+.login-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:20px}
+.login-overlay.visible{display:flex}
+.login-card{
+  background:linear-gradient(155deg,rgba(32,30,52,.95),rgba(14,13,24,.98));
+  backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border2);border-radius:16px;padding:34px 30px;width:340px;max-width:100%;text-align:center;
+}
+.login-card h2{font-size:16px;font-weight:600;margin-bottom:6px}
+.login-card .login-sub{font-size:12px;color:var(--muted);margin-bottom:22px}
+.login-card input{width:100%;padding:11px 14px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:14px;outline:none;font-family:inherit;text-align:center;margin-bottom:12px}
+.login-card input:focus{border-color:var(--accent)}
+.login-card button{width:100%;padding:11px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.login-card button:hover{filter:brightness(1.12)}
+.login-error{min-height:18px;font-size:12px;color:var(--danger,#e05555);margin-top:10px}
 
 /* ── TOAST ── */
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(30,28,48,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border2);color:var(--text);padding:9px 18px;border-radius:20px;font-size:12px;transition:transform .25s ease;z-index:999;pointer-events:none}
@@ -673,6 +689,16 @@ body{
 
 <div class="toast" id="toast"></div>
 
+<div class="login-overlay" id="login-overlay">
+  <form class="login-card" onsubmit="submitLogin(event)">
+    <h2>Life Dashboard</h2>
+    <div class="login-sub">Bitte anmelden</div>
+    <input type="password" id="login-password" placeholder="Passwort" autocomplete="current-password">
+    <button type="submit">Anmelden</button>
+    <div class="login-error" id="login-error"></div>
+  </form>
+</div>
+
 <div class="assistant-bubble" onclick="toggleAssistantPanel()" title="KI-Assistent"><div class="assistant-bubble-core"></div></div>
 <div class="assistant-panel" id="assistant-panel">
   <div class="assistant-head">
@@ -713,7 +739,47 @@ body{
 
 <script>
 /* ── KONSTANTEN ── */
-const API_BASE = 'http://localhost:5006';
+// Auf GitHub Pages läuft das Backend in der Cloud (Render), lokal wie bisher über den Launcher.
+const API_BASE = location.hostname.endsWith('github.io')
+  ? 'https://life-dashboard-8m9f.onrender.com'
+  : 'http://localhost:5006';
+
+/* ── LOGIN (Phase 4: Seite ist öffentlich erreichbar, Server prüft das Passwort) ── */
+let authToken = localStorage.getItem('ld_token') || '';
+function apiFetch(path, opts = {}){
+  opts.headers = Object.assign({}, opts.headers, authToken ? {'X-Auth': authToken} : {});
+  return fetch(API_BASE + path, opts).then(res => {
+    if(res.status === 401){ showLogin(); throw new Error('nicht angemeldet'); }
+    return res;
+  });
+}
+function showLogin(){
+  localStorage.removeItem('ld_token');
+  authToken = '';
+  document.getElementById('login-overlay').classList.add('visible');
+  setTimeout(()=> document.getElementById('login-password').focus(), 100);
+}
+async function submitLogin(ev){
+  ev.preventDefault();
+  const pw = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  try{
+    const res = await fetch(API_BASE + '/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    if(!res.ok){ errEl.textContent = 'Falsches Passwort'; return; }
+    authToken = (await res.json()).token;
+    localStorage.setItem('ld_token', authToken);
+    document.getElementById('login-overlay').classList.remove('visible');
+    document.getElementById('login-password').value = '';
+    loadState();
+    loadExtras();
+  }catch(e){
+    errEl.textContent = 'Server nicht erreichbar – gleich nochmal versuchen';
+  }
+}
 const WEEKDAYS = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
 const DOW_NAMES = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag']; // Index = Date.getDay()
 const INTERVAL_LABELS = {daily:'Tage', weekly:'Wochen', monthly:'Monate', yearly:'Jahre'};
@@ -727,7 +793,7 @@ function defaultState(){
 let state = defaultState();
 async function loadState(){
   try{
-    const res = await fetch(API_BASE + '/state');
+    const res = await apiFetch('/state');
     if(!res.ok) throw new Error('status ' + res.status);
     const parsed = await res.json();
     const base = defaultState();
@@ -740,7 +806,7 @@ async function loadState(){
   initTilt();
 }
 function saveState(){
-  fetch(API_BASE + '/state', {
+  apiFetch('/state', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(state)
@@ -1527,7 +1593,7 @@ async function syncGarmin(){
   const btn = document.getElementById('sport-sync-btn');
   if(btn){ btn.disabled = true; btn.textContent = 'Synchronisiere…'; }
   try{
-    const res = await fetch(API_BASE + '/garmin/refresh');
+    const res = await apiFetch('/garmin/refresh');
     const data = await res.json();
     if(!res.ok || !data.ok) throw new Error(data.message || 'Unbekannter Fehler');
     showToast('Garmin aktualisiert');
@@ -1541,7 +1607,7 @@ async function syncGarmin(){
 let newsItems = [], marketQuotes = [], newsOpenIdx = null;
 async function loadExtras(){
   try{
-    const [nRes, mRes] = await Promise.all([fetch(API_BASE + '/news'), fetch(API_BASE + '/markets')]);
+    const [nRes, mRes] = await Promise.all([apiFetch('/news'), apiFetch('/markets')]);
     newsItems = (await nRes.json()).items || [];
     marketQuotes = (await mRes.json()).quotes || [];
   }catch(e){
@@ -1602,7 +1668,7 @@ setInterval(loadExtras, 15*60*1000);
 let icloudPending = [];
 async function checkIcloudPending(){
   try{
-    const res = await fetch(API_BASE + '/icloud/pending');
+    const res = await apiFetch('/icloud/pending');
     const data = await res.json();
     icloudPending = data.pending || [];
   }catch(e){
@@ -1750,7 +1816,7 @@ function startAssistantTurn(){
     const transcript = e.results[0][0].transcript;
     addAssistantLine('user', transcript);
     orbThink();
-    fetch(API_BASE + '/assistant', {
+    apiFetch('/assistant', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({message: transcript})
     }).then(res => res.json()).then(data => {
