@@ -203,6 +203,10 @@ def init_db():
                 "ON CONFLICT (weekday) DO NOTHING",
                 (day,))
         _ensure_column(conn, "todos", "priority", "TEXT NOT NULL DEFAULT 'none'")
+        _ensure_column(conn, "todos", "repeat_type", "TEXT NOT NULL DEFAULT 'none'")
+        _ensure_column(conn, "todos", "repeat_weekdays", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(conn, "todos", "repeat_interval", "INTEGER")
+        _ensure_column(conn, "todos", "repeat_spawned", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "calendar_events", "category", "TEXT NOT NULL DEFAULT 'privat'")
         _ensure_column(conn, "training_plan", "options", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(conn, "training_log", "choice", "TEXT")
@@ -228,7 +232,9 @@ def init_db():
 
 def load_state():
     conn = get_db()
-    todos = [dict(id=r["id"], text=r["text"], done=bool(r["done"]), date=r["date"], priority=r["priority"])
+    todos = [dict(id=r["id"], text=r["text"], done=bool(r["done"]), date=r["date"], priority=r["priority"],
+                  repeatType=r["repeat_type"], repeatWeekdays=json.loads(r["repeat_weekdays"] or "[]"),
+                  repeatInterval=r["repeat_interval"], repeatSpawned=bool(r["repeat_spawned"]))
              for r in conn.execute("SELECT * FROM todos")]
     events = [dict(id=r["id"], title=r["title"], date=r["event_date"], endDate=r["end_date"], time=r["event_time"],
                    recurrence=r["recurrence"], interval=r["recurrence_interval"], priority=r["priority"],
@@ -271,13 +277,58 @@ def load_state():
             "garminLastSync": last_sync_row["value"] if last_sync_row else None}
 
 
+def compute_next_repeat_date(from_date_str, repeat_type, repeat_weekdays, repeat_interval):
+    """Naechstes Datum nach from_date_str fuer die gegebene Wiederholungsart, oder None."""
+    from_date = datetime.date.fromisoformat(from_date_str)
+    if repeat_type == "daily":
+        return (from_date + datetime.timedelta(days=1)).isoformat()
+    if repeat_type == "interval_days":
+        n = max(1, int(repeat_interval or 1))
+        return (from_date + datetime.timedelta(days=n)).isoformat()
+    if repeat_type == "weekly_days" and repeat_weekdays:
+        for i in range(1, 8):
+            cand = from_date + datetime.timedelta(days=i)
+            if WEEKDAYS[cand.weekday()] in repeat_weekdays:
+                return cand.isoformat()
+    return None
+
+
+def spawn_next_todo_if_needed(conn, row):
+    """Legt bei einem gerade erledigten, wiederkehrenden To-Do (falls noch nicht geschehen) die
+    naechste Instanz an. row braucht: id, text, date, priority, repeat_type, repeat_weekdays (JSON-Str), repeat_interval."""
+    if row["repeat_type"] == "none" or row["repeat_spawned"]:
+        return
+    next_date = compute_next_repeat_date(row["date"], row["repeat_type"],
+                                          json.loads(row["repeat_weekdays"] or "[]"), row["repeat_interval"])
+    if not next_date:
+        return
+    nid = "id" + uuid.uuid4().hex[:12]
+    conn.execute("""INSERT INTO todos (id, text, done, date, priority, repeat_type, repeat_weekdays, repeat_interval, repeat_spawned)
+        VALUES (?,?,0,?,?,?,?,?,0)""",
+        (nid, row["text"], next_date, row["priority"], row["repeat_type"], row["repeat_weekdays"], row["repeat_interval"]))
+    conn.execute("UPDATE todos SET repeat_spawned=1 WHERE id=?", (row["id"],))
+
+
 def save_state(data):
     conn = get_db()
     with conn:
         conn.execute("DELETE FROM todos")
         for t in data.get("todos", []):
-            conn.execute("INSERT INTO todos (id, text, done, date, priority) VALUES (?,?,?,?,?)",
-                         (t["id"], t["text"], int(bool(t["done"])), t["date"], t.get("priority", "none")))
+            conn.execute("""INSERT INTO todos
+                (id, text, done, date, priority, repeat_type, repeat_weekdays, repeat_interval, repeat_spawned)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (t["id"], t["text"], int(bool(t["done"])), t["date"], t.get("priority", "none"),
+                 t.get("repeatType", "none"), json.dumps(t.get("repeatWeekdays") or []),
+                 t.get("repeatInterval"), int(bool(t.get("repeatSpawned")))))
+        # Erledigte wiederkehrende To-Dos, die noch keine Folge-Instanz haben (z. B. weil sie gerade
+        # per Checkbox abgehakt wurden), bekommen jetzt lazy ihre naechste Instanz — nicht alles im Voraus.
+        for t in data.get("todos", []):
+            if t.get("done") and t.get("repeatType", "none") != "none" and not t.get("repeatSpawned"):
+                row = conn.execute(
+                    "SELECT id,text,date,priority,repeat_type,repeat_weekdays,repeat_interval,repeat_spawned FROM todos WHERE id=?",
+                    (t["id"],)).fetchone()
+                if row:
+                    spawn_next_todo_if_needed(conn, row)
 
         conn.execute("DELETE FROM calendar_events")
         for e in data.get("events", []):
@@ -650,6 +701,12 @@ def h_add_todo(conn, text, date=None, priority='none'):
 def h_set_todo_done(conn, id, done=True):
     with conn:
         conn.execute("UPDATE todos SET done=? WHERE id=?", (int(bool(done)), id))
+        if done:
+            row = conn.execute(
+                "SELECT id,text,date,priority,repeat_type,repeat_weekdays,repeat_interval,repeat_spawned FROM todos WHERE id=?",
+                (id,)).fetchone()
+            if row:
+                spawn_next_todo_if_needed(conn, row)
     return f"To-Do als {'erledigt' if done else 'offen'} markiert"
 
 

@@ -137,6 +137,10 @@ body{
 .ci-text{flex:1;font-size:13px;word-break:break-word}
 .ci-date{font-size:10px;color:var(--muted2);background:var(--card2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;font-family:inherit}
 .ci-del{background:none;border:none;color:var(--muted2);cursor:pointer;font-size:15px;padding:4px;flex-shrink:0}
+.repeat-badge{font-size:10px;color:var(--muted2);cursor:pointer;padding:3px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0;border:1px solid transparent;opacity:.55;transition:all .15s}
+.repeat-badge:hover{opacity:1;border-color:var(--border2)}
+.repeat-badge.active{opacity:1;color:var(--accent2);background:var(--accent-dim);border-color:var(--accent)}
+#todo-repeat-type-toggle .trp-opt.selected{border-color:var(--accent);color:var(--accent2);background:var(--accent-dim)}
 .ci-del:hover{color:var(--danger)}
 .prio-dot{width:10px;height:10px;border-radius:50%;cursor:pointer;border:2px solid var(--border2);flex-shrink:0;transition:background .15s,border-color .15s,width .15s,height .15s}
 .prio-dot[data-p="small"]{background:var(--accent);border-color:var(--accent)}
@@ -781,6 +785,36 @@ body{
   </div>
 </div>
 
+<div class="overlay" id="modal-todo-repeat">
+  <div class="modal">
+    <h2>Wiederholung</h2>
+    <div class="field">
+      <label>Wiederholt sich</label>
+      <div class="priority-toggle" id="todo-repeat-type-toggle">
+        <div class="priority-opt trp-opt" data-r="none" onclick="setTodoRepeatType('none')">Keine</div>
+        <div class="priority-opt trp-opt" data-r="daily" onclick="setTodoRepeatType('daily')">Täglich</div>
+        <div class="priority-opt trp-opt" data-r="weekly_days" onclick="setTodoRepeatType('weekly_days')">Wochentage</div>
+        <div class="priority-opt trp-opt" data-r="interval_days" onclick="setTodoRepeatType('interval_days')">Alle X Tage</div>
+      </div>
+    </div>
+    <div class="field" id="todo-repeat-weekdays-field" style="display:none">
+      <label>An welchen Tagen?</label>
+      <div class="train-picker" id="todo-repeat-weekdays-toggle"></div>
+    </div>
+    <div class="field" id="todo-repeat-interval-field" style="display:none">
+      <label>Alle wie viele Tage?</label>
+      <input type="number" id="todo-repeat-interval" min="1" value="2">
+    </div>
+    <div class="modal-sub" id="todo-repeat-hint" style="margin-bottom:0"></div>
+    <div class="modal-footer">
+      <div class="right">
+        <button class="btn btn-ghost" onclick="closeOverlay('modal-todo-repeat')">Abbrechen</button>
+        <button class="btn btn-accent" onclick="saveTodoRepeatForm()">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-icloud">
   <div class="modal">
     <h2>Neue Termine aus iCloud</h2>
@@ -933,10 +967,15 @@ async function loadState(){
 // dürfen sich nicht überholen, sonst kollidieren sie in der Datenbank und eine geht verloren.
 let saveChain = Promise.resolve();
 function saveState(){
+  // Sofort einfrieren statt erst wenn die Warteschlange dran ist — sonst kann ein Reload
+  // mitten in der Warteschlange dazu fuehren, dass ein spaeterer Request einen aelteren
+  // ueberholt oder Anfragen verloren gehen, bevor sie ueberhaupt losgeschickt wurden.
+  const payload = JSON.stringify(state);
   saveChain = saveChain.then(() => apiFetch('/state', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(state)
+    body: payload,
+    keepalive: true // Request soll auch einen Reload/Tab-Schluss noch fertig verschicken
   })).then(res => {
     if(res && !res.ok) throw new Error('status ' + res.status);
   }).catch(e=>{
@@ -992,13 +1031,41 @@ function addTodoFromInput(inputId){
   if(!text) return;
   const dateEl = document.getElementById('todos-date');
   const date = (inputId==='todos-input' && dateEl && dateEl.value) ? dateEl.value : todayStr();
-  state.todos.push({id:newId(), text, done:false, date, priority:'none'});
+  state.todos.push({id:newId(), text, done:false, date, priority:'none',
+    repeatType:'none', repeatWeekdays:[], repeatInterval:null, repeatSpawned:false});
   input.value = '';
   update();
 }
+/* Naechstes Datum fuer eine Wiederholungsart — muss client- und serverseitig (server.py
+   compute_next_repeat_date) exakt gleich rechnen, sonst driften optimistisches Anlegen
+   hier und der Sicherheitsnetz-Pfad fuer den Sprachassistenten auseinander. */
+function computeNextRepeatDate(fromStr, type, weekdays, interval){
+  const from = new Date(fromStr+'T00:00:00');
+  if(type === 'daily'){ from.setDate(from.getDate()+1); return todayStr(from); }
+  if(type === 'interval_days'){ from.setDate(from.getDate() + Math.max(1, interval||1)); return todayStr(from); }
+  if(type === 'weekly_days' && weekdays && weekdays.length){
+    for(let i=1; i<=7; i++){
+      const cand = new Date(from); cand.setDate(from.getDate()+i);
+      if(weekdays.includes(WEEKDAYS[(cand.getDay()+6)%7])) return todayStr(cand);
+    }
+  }
+  return null;
+}
 function toggleTodo(id){
   const t = state.todos.find(x=>x.id===id);
-  if(t){ t.done = !t.done; update(); }
+  if(!t) return;
+  t.done = !t.done;
+  // Beim Abhaken eines wiederkehrenden To-Dos sofort lokal die naechste Instanz anlegen (fuehlt
+  // sich sofort an), repeatSpawned verhindert dass der Server dieselbe Instanz nochmal erzeugt.
+  if(t.done && t.repeatType && t.repeatType!=='none' && !t.repeatSpawned){
+    const nextDate = computeNextRepeatDate(t.date, t.repeatType, t.repeatWeekdays, t.repeatInterval);
+    if(nextDate){
+      state.todos.push({id:newId(), text:t.text, done:false, date:nextDate, priority:t.priority,
+        repeatType:t.repeatType, repeatWeekdays:(t.repeatWeekdays||[]).slice(), repeatInterval:t.repeatInterval, repeatSpawned:false});
+      t.repeatSpawned = true;
+    }
+  }
+  update();
 }
 function deleteTodo(id){
   state.todos = state.todos.filter(x=>x.id!==id);
@@ -1027,15 +1094,80 @@ function moveTodoToPicked(id){
 }
 function discardTodo(id){ deleteTodo(id); showToast('Verworfen'); }
 
+/* ── TO-DO-WIEDERHOLUNG ── */
+let editingTodoRepeatId = null;
+let currentTodoRepeatType = 'none';
+let currentTodoRepeatWeekdays = [];
+function openTodoRepeatEditor(id){
+  const t = state.todos.find(x=>x.id===id);
+  if(!t) return;
+  editingTodoRepeatId = id;
+  currentTodoRepeatType = t.repeatType || 'none';
+  currentTodoRepeatWeekdays = (t.repeatWeekdays || []).slice();
+  document.getElementById('todo-repeat-interval').value = t.repeatInterval || 2;
+  renderTodoRepeatWeekdayPills();
+  setTodoRepeatType(currentTodoRepeatType);
+  openOverlay('modal-todo-repeat');
+}
+function renderTodoRepeatWeekdayPills(){
+  document.getElementById('todo-repeat-weekdays-toggle').innerHTML = WEEKDAYS.map(d =>
+    `<div class="train-opt ${currentTodoRepeatWeekdays.includes(d)?'selected':''}" onclick="toggleTodoRepeatWeekday('${d}')">${d.slice(0,2)}</div>`
+  ).join('');
+  updateTodoRepeatHint();
+}
+function toggleTodoRepeatWeekday(day){
+  const i = currentTodoRepeatWeekdays.indexOf(day);
+  if(i>=0) currentTodoRepeatWeekdays.splice(i,1); else currentTodoRepeatWeekdays.push(day);
+  renderTodoRepeatWeekdayPills();
+}
+function setTodoRepeatType(type){
+  currentTodoRepeatType = type;
+  document.querySelectorAll('#todo-repeat-type-toggle .trp-opt').forEach(el => el.classList.toggle('selected', el.dataset.r===type));
+  document.getElementById('todo-repeat-weekdays-field').style.display = type==='weekly_days' ? 'block' : 'none';
+  document.getElementById('todo-repeat-interval-field').style.display = type==='interval_days' ? 'block' : 'none';
+  updateTodoRepeatHint();
+}
+function updateTodoRepeatHint(){
+  const hint = document.getElementById('todo-repeat-hint');
+  const t = state.todos.find(x=>x.id===editingTodoRepeatId);
+  if(!t || currentTodoRepeatType==='none'){ hint.textContent = ''; return; }
+  const interval = parseInt(document.getElementById('todo-repeat-interval').value, 10) || 2;
+  const next = computeNextRepeatDate(t.date, currentTodoRepeatType, currentTodoRepeatWeekdays, interval);
+  hint.textContent = next ? ('Nächstes Mal automatisch: ' + formatDateShort(next)) : 'Wähl mindestens einen Wochentag.';
+}
+document.getElementById('todo-repeat-interval').addEventListener('input', updateTodoRepeatHint);
+function saveTodoRepeatForm(){
+  const t = state.todos.find(x=>x.id===editingTodoRepeatId);
+  if(!t) return;
+  if(currentTodoRepeatType==='weekly_days' && !currentTodoRepeatWeekdays.length){
+    showToast('Bitte mindestens einen Wochentag wählen'); return;
+  }
+  t.repeatType = currentTodoRepeatType;
+  t.repeatWeekdays = currentTodoRepeatType==='weekly_days' ? currentTodoRepeatWeekdays.slice() : [];
+  t.repeatInterval = currentTodoRepeatType==='interval_days' ? Math.max(1, parseInt(document.getElementById('todo-repeat-interval').value,10)||2) : null;
+  update();
+  closeOverlay('modal-todo-repeat');
+  showToast('Wiederholung gespeichert');
+}
+
+function repeatBadgeLabel(t){
+  const type = t.repeatType || 'none';
+  if(type==='daily') return '🔁 täglich';
+  if(type==='weekly_days') return '🔁 ' + (t.repeatWeekdays&&t.repeatWeekdays.length ? t.repeatWeekdays.map(d=>d.slice(0,2)).join('+') : '–');
+  if(type==='interval_days') return '🔁 alle ' + (t.repeatInterval||2) + ' T.';
+  return '🔁';
+}
 function renderTodoListItem(t, opts){
   opts = opts || {};
   const dateBadge = opts.showDate ? `<input type="date" class="ci-date" value="${t.date}" onchange="moveTodoDate('${t.id}', this.value)">` : '';
   const prio = t.priority || 'none';
   const prioLabel = {none:'keine', small:'klein', big:'groß'}[prio];
+  const repeatActive = t.repeatType && t.repeatType!=='none';
   return `<li class="check-item ${t.done?'done':''}">
     <input type="checkbox" class="chk" ${t.done?'checked':''} onchange="toggleTodo('${t.id}')">
     <span class="ci-text">${escapeHtml(t.text)}</span>
     ${dateBadge}
+    <span class="repeat-badge ${repeatActive?'active':''}" onclick="openTodoRepeatEditor('${t.id}')" title="Wiederholung einstellen">${repeatBadgeLabel(t)}</span>
     <span class="prio-dot" data-p="${prio}" onclick="cycleTodoPriority('${t.id}')" title="Priorität: ${prioLabel} (klicken zum Ändern)"></span>
     <button class="ci-del" onclick="deleteTodo('${t.id}')" title="Löschen">×</button>
   </li>`;
