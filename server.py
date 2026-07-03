@@ -43,7 +43,11 @@ GARMIN_SYNC_MIN_INTERVAL = datetime.timedelta(minutes=30)
 NEWS_FEED_URL = "https://www.tagesschau.de/index~rss2.xml"
 NEWS_CACHE_TTL = datetime.timedelta(minutes=30)
 MARKETS_CACHE_TTL = datetime.timedelta(minutes=15)
-MARKET_SYMBOLS = [("NASDAQ 100", "^NDX"), ("S&P 500", "^GSPC"), ("Gold", "GC=F")]
+# Kirills TradingView-Instrumente (MNQ1!/MES1!/XAUUSD) — TradingView selbst hat keine kostenlose
+# oeffentliche Kurs-API, darum ueber Yahoo Finance mit den passenden Micro-Futures-Tickern (per
+# echtem Kursabruf verifiziert). XAUUSD (Spot-Gold) gibt es bei Yahoo unter keiner Schreibweise —
+# GC=F (COMEX-Gold-Future, bereits im Einsatz) laeuft aber praktisch deckungsgleich mit Spot-Gold.
+MARKET_SYMBOLS = [("NASDAQ 100", "MNQ=F"), ("S&P 500", "MES=F"), ("Gold", "GC=F")]
 
 
 def load_env():
