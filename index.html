@@ -2275,7 +2275,7 @@ function stopCurrentSpeech(){
 }
 function speakReply(text, audioBase64, onEnd){
   if(audioBase64){
-    const audio = new Audio('data:audio/mpeg;base64,' + audioBase64);
+    const audio = new Audio('data:audio/wav;base64,' + audioBase64);
     currentSpeechAudio = audio;
     audio.onended = function(){ if(currentSpeechAudio===audio){ currentSpeechAudio=null; onEnd(); } };
     audio.onerror = function(){ if(currentSpeechAudio===audio){ currentSpeechAudio=null; onEnd(); } };
@@ -2380,9 +2380,10 @@ function initTilt(){
   // Auf Touch-Geräten gar kein Kippen: iOS feuert bei Fingertipps mousemove-Events,
   // dadurch "springen" die Karten unterm Finger — genau das soll nicht passieren.
   if(window.matchMedia('(hover: none)').matches) return;
-  // Kalender-Karte kippt nur minimal (−70 %), damit die Buttons oben links klickbar bleiben
-  document.querySelectorAll('.card').forEach(el => attachTilt(el, el.closest('#view-calendar') ? 1.8 : 6));
-  document.querySelectorAll('.nav-item').forEach(el => attachTilt(el, 9));
+  // Nochmal um 80 % reduziert (Kirill: Buttons in den Karten waren beim Zielen schwer zu treffen,
+  // weil sich der Inhalt unterm Mauszeiger noch zu stark mitverschoben hat). Kalender bleibt zusätzlich minimal.
+  document.querySelectorAll('.card').forEach(el => attachTilt(el, el.closest('#view-calendar') ? 0.36 : 1.2));
+  document.querySelectorAll('.nav-item').forEach(el => attachTilt(el, 1.8));
 }
 
 /* ── ALLES NEU RENDERN ── */

@@ -12,6 +12,7 @@ import datetime
 import hashlib
 import hmac
 import html
+import io
 import json
 import os
 import re
@@ -19,6 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import wave
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +36,8 @@ ENV_PATH = Path(__file__).parent / ".env"
 WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 GEMINI_MODEL = "gemini-3.5-flash"
 CLAUDE_MODEL = "claude-sonnet-5"
+GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
+GEMINI_TTS_VOICE = "Charon"  # maennlich, klar/informativ — siehe https://ai.google.dev/gemini-api/docs/speech-generation
 ICLOUD_CALENDAR_NAME = "Home"  # Kirills tatsächlich genutzter Hauptkalender (verifiziert 02.07.2026 — "Kalender" hatte nur 1 Eintrag, "Home" die echten Termine)
 GARMIN_SYNC_MIN_INTERVAL = datetime.timedelta(minutes=30)
 NEWS_FEED_URL = "https://www.tagesschau.de/index~rss2.xml"
@@ -58,8 +62,6 @@ def load_env():
 ENV = load_env()
 GEMINI_API_KEY = ENV.get("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = ENV.get("ANTHROPIC_API_KEY", "")
-ELEVENLABS_API_KEY = ENV.get("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = ENV.get("ELEVENLABS_VOICE_ID", "")
 GARMIN_EMAIL = ENV.get("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = ENV.get("GARMIN_PASSWORD", "")
 APPLE_ID_EMAIL = ENV.get("APPLE_ID_EMAIL", "")
@@ -996,28 +998,39 @@ def _gemini_request(system_prompt, contents):
     )
 
 
+def _pcm_to_wav_b64(pcm_bytes, sample_rate=24000, sample_width=2, channels=1):
+    """Gemini liefert rohes PCM ohne Dateikopf — der Browser kann das nicht abspielen.
+    Baut mit Pythons Bordmittel-`wave`-Modul einen minimalen WAV-Header drumherum."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def synthesize_speech_b64(text):
-    """Vertont die Antwort ueber ElevenLabs (realistische, menschlich klingende maennliche Stimme
-    statt der robotisch klingenden Browser-Stimmen). Best-Effort: fehlt der Key oder schlaegt der
-    Aufruf fehl, gibt es None zurueck — das Frontend faellt dann auf die Browser-Sprachausgabe zurueck."""
-    if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
+    """Vertont die Antwort ueber Gemini (nativ, gleicher Key wie fuer den Textteil — keine neue
+    Anmeldung noetig). Best-Effort: fehlt der Key oder schlaegt der Aufruf fehl, gibt es None
+    zurueck — das Frontend faellt dann auf die Browser-Sprachausgabe zurueck."""
+    if not GEMINI_API_KEY:
         return None
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps({
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        }).encode("utf-8"),
-        headers={"xi-api-key": ELEVENLABS_API_KEY, "content-type": "application/json", "accept": "audio/mpeg"},
-        method="POST",
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_TTS_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_TTS_VOICE}}},
+        },
+    }
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return base64.b64encode(resp.read()).decode("ascii")
+        resp = _http_post_json(url, {"content-type": "application/json"}, payload)
+        inline = resp["candidates"][0]["content"]["parts"][0]["inlineData"]
+        pcm_bytes = base64.b64decode(inline["data"])
+        return _pcm_to_wav_b64(pcm_bytes)
     except Exception as e:
-        print(f"[ElevenLabs] Sprachausgabe fehlgeschlagen, Browser-Fallback wird genutzt: {e}")
+        print(f"[Gemini-TTS] Sprachausgabe fehlgeschlagen, Browser-Fallback wird genutzt: {e}")
         return None
 
 
