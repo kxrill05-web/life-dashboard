@@ -1,0 +1,1856 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; connect-src 'self' http://localhost:5006;">
+<title>Life Dashboard</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0912;
+  --surface:rgba(255,255,255,.05);
+  --card:rgba(255,255,255,.06);
+  --card2:rgba(255,255,255,.08);
+  --border:rgba(255,255,255,.08);
+  --border2:rgba(255,255,255,.16);
+  --accent:#6c63ff;
+  --accent2:#8b7bff;
+  --accent-hover:#5a52e0;
+  --accent-dim:rgba(108,99,255,.12);
+  --danger:#e05555;
+  --danger-dim:rgba(224,85,85,.12);
+  --success:#3fb950;
+  --success-dim:rgba(63,185,80,.12);
+  --warn:#ffb648;
+  --warn-dim:rgba(255,182,72,.14);
+  --claude:#4dabf7;
+  --text:#f0f0f5;
+  --muted:#9a97b5;
+  --muted2:#6b6884;
+  --cat-trading:#6c63ff;
+  --cat-schule:#4dabf7;
+  --cat-sport:#2dd4bf;
+  --cat-privat:#ff8fa3;
+}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;
+  background:radial-gradient(circle at 18% 8%, #14122b 0%, #0a0912 45%, #050508 100%);
+  background-attachment:fixed;
+  color:var(--text);font-size:13px;line-height:1.5;
+  min-height:100vh;position:relative;overflow-x:hidden;
+}
+.blob{position:fixed;border-radius:50%;filter:blur(120px);pointer-events:none;z-index:0}
+.blob.b1{width:440px;height:440px;background:var(--accent);opacity:.16;top:-110px;left:4%}
+.blob.b2{width:380px;height:380px;background:var(--success);opacity:.09;bottom:-130px;right:3%}
+
+/* ── TOPBAR / NAV ── */
+.topbar{
+  background:transparent;padding:20px 22px 0;display:flex;align-items:center;justify-content:center;
+  position:sticky;top:0;z-index:100;
+}
+.topnav{
+  display:flex;gap:3px;background:rgba(255,255,255,.05);border:1px solid var(--border2);
+  padding:4px;border-radius:14px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);flex-wrap:wrap;justify-content:center;
+}
+.nav-item{
+  display:flex;align-items:center;gap:7px;background:transparent;border:none;
+  color:var(--muted);padding:8px 15px;border-radius:10px;font-size:12.5px;
+  font-weight:500;cursor:pointer;white-space:nowrap;transition:background .18s,color .18s;font-family:inherit;will-change:transform;
+}
+.nav-item:hover{background:rgba(255,255,255,.07);color:var(--text)}
+.nav-item.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600}
+
+/* ── LAYOUT ── */
+.content{max-width:1120px;margin:0 auto;padding:26px 24px 90px;position:relative;z-index:1}
+.view{display:none}
+.view.active{display:block;animation:pageIn .4s ease}
+@keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.page-title{font-size:20px;font-weight:700}
+.page-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+
+/* ── OVERVIEW HEADER ── */
+.ov-hello{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;padding:8px 2px 0;margin-bottom:16px}
+.hello-name{font-size:26px;font-weight:700}
+.hello-date{font-size:15px;color:var(--muted)}
+
+/* ── CARDS ── */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:18px}
+.ov-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:0;
+  grid-template-areas:"news news markets markets" "sleep sleep train train" "journal journal todos todos" "upcoming upcoming upcoming upcoming";
+}
+.ov-grid .card{margin-bottom:0}
+.news-card{grid-area:news}
+.markets-card{grid-area:markets}
+.sleep-card{grid-area:sleep}
+.train-card{grid-area:train;display:flex;flex-direction:column}
+.train-card #ov-training-body{display:flex;flex-direction:column;flex:1}
+.journal-card{grid-area:journal}
+.todos-card{grid-area:todos}
+.upcoming-card{grid-area:upcoming}
+.upcoming-card #ov-upcoming-body{display:flex;flex-wrap:wrap;gap:4px 22px}
+.upcoming-card .up-item{border-top:none;padding:3px 0}
+.card{
+  background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02));
+  backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+  border:1px solid var(--border);border-radius:16px;padding:18px;
+  transition:border-color .22s ease,box-shadow .22s ease;will-change:transform;
+}
+.card:hover{border-color:var(--border2);box-shadow:0 16px 32px rgba(0,0,0,.35)}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-head h3{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.card-head.clickable{cursor:pointer}
+.card-tag{font-size:10px;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--muted);font-weight:600;text-transform:uppercase}
+.card-link{font-size:11px;color:var(--accent2);cursor:pointer;background:none;border:none;font-family:inherit}
+.card-link:hover{text-decoration:underline}
+.chev{display:inline-block;font-size:11px;color:var(--muted);transition:transform .25s ease}
+.journal-card.open .chev{transform:rotate(180deg)}
+
+/* ── BUTTONS ── */
+.btn{padding:8px 16px;border-radius:7px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .15s;font-family:inherit}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-accent:hover{background:var(--accent-hover)}
+.btn-ghost{background:transparent;border-color:var(--border2);color:var(--muted)}
+.btn-ghost:hover{border-color:var(--muted);color:var(--text)}
+.btn-danger-o{background:transparent;border-color:var(--border2);color:var(--muted)}
+.btn-danger-o:hover{border-color:var(--danger);color:var(--danger)}
+.btn-sm{padding:5px 11px;font-size:11px;border-radius:6px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── CHECKLIST ── */
+.chk{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid var(--border2);border-radius:5px;cursor:pointer;position:relative;flex-shrink:0;transition:all .15s}
+.chk:checked{background:var(--success);border-color:var(--success)}
+.chk:checked::after{content:'';position:absolute;left:4px;top:0px;width:5px;height:9px;border:2px solid #fff;border-top:none;border-left:none;transform:rotate(45deg)}
+.check-list{list-style:none;display:flex;flex-direction:column;gap:2px}
+.check-item{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:6px;transition:background .1s}
+.check-item:hover{background:rgba(255,255,255,.04)}
+.check-item.done .ci-text{text-decoration:line-through;color:var(--muted2)}
+.ci-text{flex:1;font-size:13px;word-break:break-word}
+.ci-date{font-size:10px;color:var(--muted2);background:var(--card2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;font-family:inherit}
+.ci-del{background:none;border:none;color:var(--muted2);cursor:pointer;font-size:15px;padding:4px;flex-shrink:0}
+.ci-del:hover{color:var(--danger)}
+.prio-dot{width:10px;height:10px;border-radius:50%;cursor:pointer;border:2px solid var(--border2);flex-shrink:0;transition:background .15s,border-color .15s,width .15s,height .15s}
+.prio-dot[data-p="small"]{background:var(--accent);border-color:var(--accent)}
+.prio-dot[data-p="big"]{background:var(--warn);border-color:var(--warn);width:13px;height:13px}
+
+/* ── QUICK ADD ── */
+.quick-add{display:flex;gap:8px;margin-bottom:12px}
+.quick-add input{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--border2);color:var(--text);border-radius:7px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit}
+.quick-add input:focus{border-color:var(--accent)}
+.quick-add input[type=date]{flex:0 0 auto;width:auto;color-scheme:dark;font-size:12px}
+.quick-add button{width:38px;border-radius:7px;background:var(--accent);border:none;color:#fff;font-size:19px;cursor:pointer;flex-shrink:0;line-height:1}
+.quick-add button:hover{background:var(--accent-hover)}
+
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:30px 16px;color:var(--muted2);font-size:12px;line-height:1.7}
+.empty-state .ee-icon{font-size:24px;margin-bottom:8px;opacity:.5;display:block}
+
+/* ── REVIEW BANNER ── */
+.review-banner{background:var(--warn-dim);border:1px solid rgba(255,182,72,.3);border-radius:14px;padding:14px 16px;margin-bottom:18px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.review-title{font-size:11.5px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.review-item{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,182,72,.2)}
+.review-item:first-child{border-top:none;padding-top:0}
+.review-text{flex:1;font-size:12.5px;min-width:140px}
+.review-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.review-actions input[type=date]{background:rgba(255,255,255,.05);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 7px;font-size:11px;font-family:inherit}
+
+/* ── MINI STATS ── */
+.mini-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+.ms{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.ms-val{font-size:18px;font-weight:700;font-family:'SF Mono',Menlo,monospace}
+.ms-lab{font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+
+/* ── SCHLAF-UHR ── */
+.sleep-clock{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.sleep-legend{display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.sleep-legend b{color:var(--text);font-weight:600}
+.leg-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+
+/* ── NEWS ── */
+.news-item{border-top:1px solid var(--border)}
+.news-item:first-child{border-top:none}
+.news-head{display:flex;align-items:baseline;gap:8px;padding:8px 2px;cursor:pointer;border-radius:6px;transition:background .12s}
+.news-head:hover{background:rgba(255,255,255,.04)}
+.news-title{flex:1;font-size:12.5px;line-height:1.45}
+.news-time{font-size:10px;color:var(--muted2);flex-shrink:0}
+.news-chev{font-size:10px;color:var(--muted2);transition:transform .25s ease;flex-shrink:0}
+.news-item.open .news-chev{transform:rotate(180deg)}
+.news-detail{display:none;padding:2px 2px 12px}
+.news-item.open .news-detail{display:block;animation:pageIn .3s ease}
+.news-img{width:100%;max-height:150px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:1px solid var(--border)}
+.news-text{font-size:12px;color:var(--muted);line-height:1.6}
+.news-link{display:inline-block;font-size:11px;color:var(--accent2);margin-top:6px;text-decoration:none}
+.news-link:hover{text-decoration:underline}
+
+/* ── MÄRKTE ── */
+.mkt-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--border)}
+.mkt-row:first-child{border-top:none}
+.mkt-name{flex:1;font-size:13px;font-weight:600}
+.mkt-price{font-size:13px;font-family:'SF Mono',Menlo,monospace}
+.mkt-chg{font-size:11px;font-family:'SF Mono',Menlo,monospace}
+.mkt-chg.up{color:var(--success)}
+.mkt-chg.down{color:var(--danger)}
+
+/* ── SUPPLEMENTS ── */
+.supp-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:6px;background:var(--accent-dim);margin-bottom:4px}
+.supp-row.done .ci-text{text-decoration:line-through;color:var(--muted2)}
+.supp-badge{font-size:9.5px;background:rgba(139,123,255,.16);color:var(--accent2);border-radius:8px;padding:2px 7px;margin-left:auto;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+
+/* ── UPCOMING LIST ── */
+.up-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)}
+.up-item:first-child{border-top:none}
+.up-date{font-size:10.5px;color:var(--warn);background:var(--warn-dim);border-radius:5px;padding:4px 8px;font-weight:600;flex-shrink:0;white-space:nowrap}
+.up-title{font-size:12.5px}
+
+/* ── TAGEBUCH ── */
+.mood-row{display:flex;gap:8px;margin-bottom:14px}
+.mood-opt{font-size:20px;cursor:pointer;opacity:.4;transition:transform .18s ease,opacity .18s ease}
+.mood-opt:hover{transform:translateY(-3px) scale(1.15);opacity:.75}
+.mood-opt.active{opacity:1;transform:scale(1.18)}
+.prod-row{display:flex;align-items:center;gap:10px}
+.prod-label{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.prod-bars{display:flex;gap:4px;flex:1}
+.pbar{height:7px;flex:1;border-radius:4px;background:rgba(255,255,255,.08);cursor:pointer;transition:background .15s ease}
+.pbar.filled{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.journal-expand{max-height:0;overflow:hidden;opacity:0;transition:max-height .4s ease,opacity .3s ease,margin-top .4s ease}
+.journal-card.open .journal-expand{max-height:1600px;opacity:1;margin-top:14px}
+.note-input{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;min-height:56px;margin-bottom:10px}
+.note-input:focus{border-color:var(--accent);outline:none}
+.entries-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+.reveal-btn{background:none;border:1px solid var(--border2);color:var(--muted);font-size:11px;padding:5px 10px;border-radius:8px;cursor:pointer;font-family:inherit}
+.reveal-btn:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.journal-entry{display:flex;align-items:center;gap:10px;font-size:12px;padding:7px 0;color:var(--muted);border-top:1px solid rgba(255,255,255,.05)}
+.journal-entry:first-child{border-top:none}
+.je-date{color:var(--muted2);width:52px;flex-shrink:0}
+.je-mood{flex-shrink:0}
+.je-note{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:1px;color:var(--muted)}
+.je-empty{color:var(--muted2);letter-spacing:normal}
+
+/* ── TRAINING PLAN TABLE ── */
+.plan-table{width:100%;border-collapse:collapse}
+.plan-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);padding:8px 10px;border-bottom:1px solid var(--border2)}
+.plan-table td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.plan-weekday{font-size:12.5px;font-weight:600;width:100px}
+.plan-weekday.today{color:var(--accent2)}
+.plan-input{width:100%;max-width:260px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;font-family:inherit;outline:none}
+.plan-input:focus{border-color:var(--accent)}
+.plan-check-cell{width:40px;text-align:center}
+.plan-note{color:var(--muted2);font-size:11.5px;margin-top:10px}
+.train-picker{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.train-opt{padding:7px 12px;text-align:center;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);transition:all .15s;background:rgba(255,255,255,.03);white-space:nowrap}
+.train-opt:hover{border-color:var(--border2);color:var(--text)}
+.train-opt.selected{border-color:var(--success);color:var(--success);background:var(--success-dim)}
+.train-opt.custom-trigger{border-style:dashed}
+.train-custom-input{background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-size:12px;font-family:inherit;outline:none;width:130px}
+.train-custom-input:focus{border-color:var(--accent)}
+
+/* ── KALENDER ── */
+.cal-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px}
+.cal-month-label{font-size:15px;font-weight:600}
+.cal-nav{display:flex;gap:6px}
+.cat-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cal-dow{background:rgba(255,255,255,.04);padding:8px 4px;text-align:center;font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted2);letter-spacing:.04em}
+.cal-day{background:rgba(5,5,10,.5);min-height:90px;padding:6px;display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:background .1s}
+.cal-day:hover{background:rgba(255,255,255,.05)}
+.cal-day.empty{cursor:default;background:rgba(255,255,255,.02)}
+.cal-day.today{background:rgba(108,99,255,.1)}
+.cal-day-num{font-size:11px;color:var(--muted2);font-weight:600}
+.cal-day.today .cal-day-num{color:var(--accent2)}
+.cal-pill{font-size:9.5px;padding:2px 6px;border-radius:4px;background:var(--card2);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid var(--muted2);display:flex;align-items:center}
+.cal-pill.big{border-left-color:var(--warn);background:var(--warn-dim);color:var(--warn)}
+.cal-pill.small{border-left-color:var(--accent2);background:var(--accent-dim);color:var(--accent2)}
+.cal-pill .cat-dot{margin-right:4px}
+.cal-pill.cont{opacity:.72}
+
+/* ── MODAL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:20px}
+.overlay.open{display:flex}
+.modal{
+  background:linear-gradient(155deg,rgba(32,30,52,.95),rgba(14,13,24,.98));
+  backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border2);border-radius:16px;padding:26px;width:440px;max-width:100%;
+}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:18px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);margin-bottom:5px}
+.field input,.field select{width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field-row{display:flex;gap:10px}
+.field-row .field{flex:1}
+.modal-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:20px}
+.modal-footer .right{display:flex;gap:8px;margin-left:auto}
+.priority-toggle{display:flex;gap:8px;flex-wrap:wrap}
+.priority-opt{flex:1;min-width:70px;padding:9px;text-align:center;border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);transition:all .15s}
+.priority-opt[data-p=big].selected{border-color:var(--warn);color:var(--warn);background:var(--warn-dim)}
+.priority-opt[data-p=small].selected{border-color:var(--accent2);color:var(--accent2);background:var(--accent-dim)}
+.cat-opt[data-c=trading].selected{border-color:var(--cat-trading);color:var(--cat-trading);background:rgba(108,99,255,.12)}
+.cat-opt[data-c=schule].selected{border-color:var(--cat-schule);color:var(--cat-schule);background:rgba(77,171,247,.12)}
+.cat-opt[data-c=sport].selected{border-color:var(--cat-sport);color:var(--cat-sport);background:rgba(45,212,191,.12)}
+.cat-opt[data-c=privat].selected{border-color:var(--cat-privat);color:var(--cat-privat);background:rgba(255,143,163,.12)}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6}
+.modal-choice-row{display:flex;flex-direction:column;gap:8px}
+.modal-choice-row .btn{width:100%}
+
+/* ── GARMIN / ICLOUD ── */
+.icloud-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)}
+.icloud-row:last-child{border-bottom:none}
+.icloud-row .ci-text{flex:1;font-size:12.5px}
+.icloud-row .ci-date{font-size:11px;color:var(--muted);font-family:monospace;white-space:nowrap}
+.range-btn{background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 11px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit}
+.range-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent2)}
+.expand-arrow{cursor:pointer;transition:transform .25s ease;display:inline-block}
+.expand-arrow.open{transform:rotate(180deg)}
+.sport-stat{font-size:22px;font-weight:700;font-family:monospace}
+.sport-sub{font-size:11.5px;color:var(--muted);margin-top:4px}
+.sport-stages{font-size:11px;color:var(--muted2);margin-top:8px;font-family:monospace}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(30,28,48,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border2);color:var(--text);padding:9px 18px;border-radius:20px;font-size:12px;transition:transform .25s ease;z-index:999;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ── KI-ASSISTENT ── */
+@keyframes bubblePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@keyframes spinCW{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes spinCCW{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+@keyframes nodePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.6)}}
+@keyframes ringPulse{0%{transform:scale(1);opacity:.4}100%{transform:scale(1.7);opacity:0}}
+.assistant-bubble{position:fixed;bottom:22px;right:22px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 10px 26px rgba(108,99,255,.45);z-index:200;transition:transform .2s ease;animation:bubblePulse 3.5s ease-in-out infinite}
+.assistant-bubble:hover{transform:scale(1.08)}
+.assistant-bubble-core{width:14px;height:14px;border-radius:50%;background:#fff;opacity:.9}
+.assistant-panel{
+  position:fixed;bottom:86px;right:22px;width:320px;
+  background:linear-gradient(155deg,rgba(32,30,52,.95),rgba(14,13,24,.98));
+  backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border2);border-radius:16px;padding:16px;z-index:200;
+  opacity:0;transform:translateY(10px) scale(.97);pointer-events:none;transition:opacity .22s ease,transform .22s ease;
+  max-height:calc(100vh - 120px);overflow-y:auto;
+}
+.assistant-panel.open{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+.assistant-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;margin-bottom:10px}
+.assistant-close{cursor:pointer;color:var(--muted);font-size:16px;line-height:1}
+.assistant-link{font-size:12px;color:var(--accent2);cursor:pointer;display:block;text-align:center;margin-top:14px}
+.assistant-link:hover{text-decoration:underline}
+.orb-wrap{position:relative;width:150px;height:150px;display:flex;align-items:center;justify-content:center;margin:4px auto 6px;background:none;border:none;padding:0;cursor:pointer}
+.orb-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--accent2);animation:ringPulse 1.3s ease-out infinite}
+.orb-node{transform-box:fill-box;transform-origin:center;animation:nodePulse 1.8s ease-in-out infinite}
+.assistant-state-label{font-size:11px;color:var(--muted);text-align:center;min-height:15px;margin-bottom:8px}
+.assistant-transcript{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+.assistant-row-tag{font-size:10px;margin-bottom:2px;font-weight:600}
+.assistant-row-text{font-size:13px;line-height:1.5}
+.assistant-mic-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--card2);border:1px solid var(--border2);color:var(--text);cursor:pointer;margin:10px auto 0;font-size:15px;transition:background .2s ease}
+.assistant-mic-btn:hover{background:var(--accent-dim)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:720px){
+  .topbar{padding:14px 12px 0}
+  .content{padding:18px 12px 90px}
+  .card-grid{grid-template-columns:1fr}
+  .ov-grid{grid-template-columns:1fr;grid-template-areas:none}
+  .ov-grid>.card{grid-area:auto}
+  .cal-day{min-height:58px;font-size:11px;padding:4px}
+  .cal-pill{font-size:8.5px}
+  .cal-dow{font-size:8.5px}
+  .modal{padding:20px}
+  .plan-weekday{width:76px}
+  .assistant-panel{width:calc(100vw - 44px)}
+}
+</style>
+</head>
+<body>
+
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+
+<header class="topbar">
+  <nav class="topnav" id="topnav">
+    <button class="nav-item active" data-view="overview">Übersicht</button>
+    <button class="nav-item" data-view="sport">Sportanalysen</button>
+    <button class="nav-item" data-view="training">Trainingsplan</button>
+    <button class="nav-item" data-view="todos">To-Dos</button>
+    <button class="nav-item" data-view="calendar">Kalender</button>
+  </nav>
+</header>
+
+<main class="content">
+
+  <!-- ═══════════ ÜBERSICHT ═══════════ -->
+  <section id="view-overview" class="view active">
+
+    <div class="ov-hello">
+      <div class="hello-name">Hallo Kirill</div>
+      <div class="hello-date" id="ov-hello-date"></div>
+    </div>
+
+    <div id="ov-review-banner" class="review-banner" style="display:none">
+      <div class="review-title">Von gestern nicht abgehakt</div>
+      <div id="ov-review-list"></div>
+    </div>
+
+    <div class="card-grid ov-grid">
+      <div class="card news-card">
+        <div class="card-head"><h3>News heute</h3><span class="card-tag">Tagesschau</span></div>
+        <div id="ov-news-body"></div>
+      </div>
+
+      <div class="card markets-card">
+        <div class="card-head"><h3>Märkte</h3><span class="card-tag">Live</span></div>
+        <div id="ov-markets-body"></div>
+      </div>
+
+      <div class="card sleep-card">
+        <div class="card-head"><h3>Schlaf</h3><span class="card-tag">Garmin</span></div>
+        <div id="ov-sleep-body"></div>
+      </div>
+
+      <div class="card train-card">
+        <div class="card-head"><h3>Heutiges Training</h3><button class="card-link" onclick="switchView('training')">Plan öffnen →</button></div>
+        <div id="ov-training-body"></div>
+      </div>
+
+      <div class="card journal-card" id="journal-card">
+        <div class="card-head clickable" onclick="toggleJournalCard()">
+          <h3>Tagebuch</h3>
+          <span class="chev">▾</span>
+        </div>
+        <div class="mood-row" id="journal-mood-row">
+          <span class="mood-opt" data-m="😞" onclick="selectJournalMood(this)">😞</span>
+          <span class="mood-opt" data-m="😐" onclick="selectJournalMood(this)">😐</span>
+          <span class="mood-opt" data-m="🙂" onclick="selectJournalMood(this)">🙂</span>
+          <span class="mood-opt" data-m="😄" onclick="selectJournalMood(this)">😄</span>
+          <span class="mood-opt" data-m="🤩" onclick="selectJournalMood(this)">🤩</span>
+        </div>
+        <div class="prod-row">
+          <span class="prod-label">Produktivität</span>
+          <div class="prod-bars" id="journal-prod-bars">
+            <span class="pbar" data-v="1" onclick="setJournalProd(1)"></span>
+            <span class="pbar" data-v="2" onclick="setJournalProd(2)"></span>
+            <span class="pbar" data-v="3" onclick="setJournalProd(3)"></span>
+            <span class="pbar" data-v="4" onclick="setJournalProd(4)"></span>
+            <span class="pbar" data-v="5" onclick="setJournalProd(5)"></span>
+          </div>
+        </div>
+        <div class="journal-expand" id="journal-expand">
+          <textarea class="note-input" id="journal-note" placeholder="Was geht dir durch den Kopf...?"></textarea>
+          <button class="btn btn-accent btn-sm" onclick="saveJournalEntry()">Speichern</button>
+          <div class="entries-head">
+            <span>Stimmungsverlauf</span>
+            <span style="display:flex;gap:5px">
+              <button class="range-btn mood-range active" onclick="setMoodRange(7,this)">7 T</button>
+              <button class="range-btn mood-range" onclick="setMoodRange(30,this)">30 T</button>
+              <button class="range-btn mood-range" onclick="setMoodRange(365,this)">1 J</button>
+            </span>
+          </div>
+          <div id="mood-chart-box"></div>
+          <div class="entries-head">
+            <span>Ziele</span>
+            <span style="font-size:10px;color:var(--muted2);text-transform:none;letter-spacing:0">nur hier sichtbar · die KI kennt sie</span>
+          </div>
+          <div class="quick-add">
+            <input type="text" id="goal-input" placeholder="Neues langfristiges Ziel…">
+            <button onclick="addGoalFromInput()">+</button>
+          </div>
+          <ul class="check-list" id="goals-list"></ul>
+          <div class="entries-head">
+            <span>Letzte Einträge</span>
+            <button class="reveal-btn" id="journal-reveal-btn" onclick="toggleJournalReveal()">Anzeigen</button>
+          </div>
+          <div id="journal-entries-list"></div>
+        </div>
+      </div>
+
+      <div class="card todos-card">
+        <div class="card-head"><h3>Heutige To-Dos</h3><button class="card-link" onclick="switchView('todos')">Alle anzeigen →</button></div>
+        <div class="quick-add">
+          <input type="text" id="ov-todo-input" placeholder="Neuer Punkt für heute…">
+          <button onclick="addTodoFromInput('ov-todo-input')">+</button>
+        </div>
+        <ul class="check-list" id="ov-todo-list"></ul>
+      </div>
+
+      <div class="card upcoming-card">
+        <div class="card-head"><h3>Bald wichtig</h3><button class="card-link" onclick="switchView('calendar')">Kalender →</button></div>
+        <div id="ov-upcoming-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ SPORTANALYSEN ═══════════ -->
+  <section id="view-sport" class="view">
+    <div class="page-title">Sportanalysen</div>
+    <div class="page-sub">Schlaf, Puls und Training aus Garmin Connect</div>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-head"><h3>Garmin-Verbindung</h3></div>
+        <div id="sport-conn-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Letzte Trainings</h3><span class="card-tag">Garmin</span></div>
+        <div id="sport-acts-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Puls-Verlauf</h3></div>
+        <div class="empty-state"><span class="ee-icon">❤️</span>Noch keine Daten.</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Schlaf-Verlauf (inkl. REM/Tief/Leicht)</h3></div>
+        <div id="sport-sleep-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Ruhepuls-Trend</h3></div>
+        <div id="sport-hr-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Fitness-Level</h3><span class="card-tag">Garmin</span></div>
+        <div id="sport-fitness-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Optimierungsvorschläge</h3></div>
+        <div class="empty-state"><span class="ee-icon">💡</span>Noch keine Daten.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ TRAININGSPLAN ═══════════ -->
+  <section id="view-training" class="view">
+    <div class="page-title">Trainingsplan</div>
+    <div class="page-sub">Fester Wochenplan – Inhalt wird noch mit dir abgesprochen</div>
+
+    <div class="card" style="margin-top:18px">
+      <table class="plan-table">
+        <thead><tr><th>Tag</th><th>Session</th><th style="text-align:center">Erledigt</th></tr></thead>
+        <tbody id="plan-tbody"></tbody>
+      </table>
+      <div class="plan-note">Die Häkchen gelten für die jeweilige Kalenderwoche und setzen sich jede Woche zurück.</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ TO-DOS ═══════════ -->
+  <section id="view-todos" class="view">
+    <div class="page-title">To-Dos</div>
+    <div class="page-sub">Aufgaben – über das Datum auch für andere Tage planbar</div>
+
+    <div class="card" style="margin-top:18px">
+      <div class="quick-add">
+        <input type="text" id="todos-input" placeholder="Neuer Punkt…">
+        <input type="date" id="todos-date" title="Für welchen Tag?">
+        <button onclick="addTodoFromInput('todos-input')">+</button>
+      </div>
+      <ul class="check-list" id="todos-full-list"></ul>
+    </div>
+  </section>
+
+  <!-- ═══════════ KALENDER ═══════════ -->
+  <section id="view-calendar" class="view">
+
+    <div id="cal-review-banner" class="review-banner" style="display:none;margin-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span id="cal-review-text"></span>
+        <button class="btn btn-accent btn-sm" onclick="openIcloudModal()">Anzeigen</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <div class="cal-toolbar">
+        <div class="cal-nav">
+          <button class="btn btn-ghost btn-sm" onclick="calShift(-1)">←</button>
+          <button class="btn btn-ghost btn-sm" onclick="calShift(1)">→</button>
+          <button class="btn btn-ghost btn-sm" onclick="calToday()">Heute</button>
+        </div>
+        <div class="cal-month-label" id="cal-month-label"></div>
+        <button class="btn btn-accent btn-sm" onclick="openEventCreator(todayStr())">+ Termin</button>
+      </div>
+
+      <div class="cal-grid" id="cal-grid"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ VERLAUF (ASSISTENT-TRANSKRIPT) ═══════════ -->
+  <section id="view-verlauf" class="view">
+    <div class="page-title">Verlauf</div>
+    <div class="page-sub">Transkript deiner Gespräche mit dem Assistenten</div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:14px" onclick="switchView('overview')">← Zurück</button>
+    <div class="card" style="margin-top:16px">
+      <div id="verlauf-list"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════ MODAL: TERMIN ═══════════ -->
+<div class="overlay" id="modal-event">
+  <div class="modal">
+    <h2 id="ev-modal-title">Neuer Termin</h2>
+    <div class="field">
+      <label>Titel</label>
+      <input type="text" id="ev-title" placeholder="z. B. Gespräch mit dem Vorsitzenden">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Datum</label>
+        <input type="date" id="ev-date">
+      </div>
+      <div class="field">
+        <label>Bis (optional)</label>
+        <input type="date" id="ev-enddate">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Uhrzeit (optional)</label>
+        <input type="time" id="ev-time">
+      </div>
+      <div class="field">
+        <label>Wiederholung</label>
+        <select id="ev-recurrence" onchange="onRecurrenceChange()">
+          <option value="none">Keine</option>
+          <option value="daily">Täglich</option>
+          <option value="weekly">Wöchentlich</option>
+          <option value="monthly">Monatlich</option>
+          <option value="yearly">Jährlich</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="ev-interval-field" style="display:none">
+      <label id="ev-interval-label">Alle wie viele Wochen?</label>
+      <input type="number" id="ev-interval" min="1" value="1">
+    </div>
+    <div class="field">
+      <label>Priorität</label>
+      <div class="priority-toggle">
+        <div class="priority-opt" data-p="small" onclick="setPriorityChoice('small')">Normal</div>
+        <div class="priority-opt" data-p="big" onclick="setPriorityChoice('big')">Wichtig (groß)</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Kategorie</label>
+      <div class="priority-toggle" id="ev-category-toggle">
+        <div class="priority-opt cat-opt" data-c="trading" onclick="setCategoryChoice('trading')">Trading</div>
+        <div class="priority-opt cat-opt" data-c="schule" onclick="setCategoryChoice('schule')">Schule</div>
+        <div class="priority-opt cat-opt" data-c="sport" onclick="setCategoryChoice('sport')">Sport</div>
+        <div class="priority-opt cat-opt" data-c="privat" onclick="setCategoryChoice('privat')">Privat</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger-o" id="ev-delete-btn" onclick="deleteEventForm()" style="display:none">Löschen</button>
+      <div class="right">
+        <button class="btn btn-ghost" onclick="closeOverlay('modal-event')">Abbrechen</button>
+        <button class="btn btn-accent" onclick="saveEventForm()">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: SERIE ODER EINZELN ═══════════ -->
+<div class="overlay" id="modal-series-choice">
+  <div class="modal">
+    <h2 id="series-choice-title">Diesen Termin bearbeiten</h2>
+    <div class="modal-sub">Dieser Termin gehört zu einer wiederholenden Serie. Was soll geändert werden?</div>
+    <div class="modal-choice-row">
+      <button class="btn btn-accent" onclick="resolveSeriesChoice('single')">Nur diesen Termin</button>
+      <button class="btn btn-ghost" onclick="resolveSeriesChoice('whole')">Ganze Serie</button>
+      <button class="btn btn-ghost" onclick="closeOverlay('modal-series-choice')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-icloud">
+  <div class="modal">
+    <h2>Neue Termine aus iCloud</h2>
+    <div class="modal-sub">Aus deinem "Home"-Kalender — wähl aus, was ins Dashboard übernommen wird.</div>
+    <div id="icloud-list"></div>
+    <div class="modal-footer">
+      <a style="font-size:12px;color:var(--accent2);cursor:pointer" onclick="toggleAllIcloud()" id="icloud-toggle-all">Alle abwählen</a>
+      <div class="right">
+        <button class="btn btn-ghost" onclick="closeOverlay('modal-icloud')">Abbrechen</button>
+        <button class="btn btn-accent" id="icloud-confirm-btn" onclick="confirmIcloudImport()">Übernehmen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="assistant-bubble" onclick="toggleAssistantPanel()" title="KI-Assistent"><div class="assistant-bubble-core"></div></div>
+<div class="assistant-panel" id="assistant-panel">
+  <div class="assistant-head">
+    <span>KI-Assistent</span>
+    <span class="assistant-close" onclick="toggleAssistantPanel()">×</span>
+  </div>
+
+  <button class="orb-wrap" id="orb-wrap" aria-label="Sprachaufnahme starten" onclick="startAssistantTurn()">
+    <div class="orb-ring" id="orb-ring1" style="display:none"></div>
+    <div class="orb-ring" id="orb-ring2" style="display:none;animation-delay:.4s"></div>
+    <svg id="orb-svg" viewBox="0 0 200 200" width="150" height="150" style="display:block;transition:opacity .5s">
+      <g id="orb-core">
+        <circle cx="100" cy="100" r="36" fill="var(--orb-color,var(--accent))" opacity="0.08"></circle>
+        <circle cx="100" cy="100" r="24" fill="var(--orb-color,var(--accent))" opacity="0.16"></circle>
+        <circle cx="100" cy="100" r="14" fill="var(--orb-color,var(--accent))" opacity="0.85"></circle>
+        <circle cx="100" cy="100" r="4" fill="var(--orb-color,var(--accent))" opacity="1"></circle>
+      </g>
+      <g id="orbit-a" style="transform-box:fill-box;transform-origin:center;animation:spinCW 16s linear infinite">
+        <ellipse cx="100" cy="100" rx="76" ry="28" transform="rotate(-25 100 100)" fill="none" stroke="var(--orb-color,var(--accent))" stroke-width="1" opacity="0.4"></ellipse>
+        <circle class="orb-node" cx="176" cy="100" r="4" fill="var(--orb-color,var(--accent))" transform="rotate(-25 100 100)"></circle>
+      </g>
+      <g id="orbit-b" style="transform-box:fill-box;transform-origin:center;animation:spinCCW 20s linear infinite">
+        <ellipse cx="100" cy="100" rx="76" ry="28" transform="rotate(35 100 100)" fill="none" stroke="var(--orb-color,var(--accent))" stroke-width="1" opacity="0.32"></ellipse>
+        <circle class="orb-node" cx="176" cy="100" r="3.5" fill="var(--orb-color,var(--accent))" transform="rotate(35 100 100)" style="animation-delay:.5s"></circle>
+      </g>
+      <g id="orbit-c" style="transform-box:fill-box;transform-origin:center;animation:spinCW 26s linear infinite">
+        <ellipse cx="100" cy="100" rx="76" ry="28" transform="rotate(85 100 100)" fill="none" stroke="var(--orb-color,var(--accent))" stroke-width="1" opacity="0.26"></ellipse>
+        <circle class="orb-node" cx="176" cy="100" r="3" fill="var(--orb-color,var(--accent))" transform="rotate(85 100 100)" style="animation-delay:1s"></circle>
+      </g>
+    </svg>
+  </button>
+  <div class="assistant-state-label" id="assistant-state-label">tippen zum Sprechen</div>
+  <div class="assistant-transcript" id="assistant-transcript"></div>
+  <div class="assistant-mic-btn" id="assistant-mic-btn" title="Stumm / stoppen" onclick="stopAssistantSpeaking()">🎤</div>
+
+  <div class="assistant-link" onclick="toggleAssistantPanel();switchView('verlauf')">Verlauf ansehen →</div>
+</div>
+
+<script>
+/* ── KONSTANTEN ── */
+const API_BASE = 'http://localhost:5006';
+const WEEKDAYS = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+const DOW_NAMES = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag']; // Index = Date.getDay()
+const INTERVAL_LABELS = {daily:'Tage', weekly:'Wochen', monthly:'Monate', yearly:'Jahre'};
+
+/* ── STATE ── */
+function defaultState(){
+  const plan = {};
+  WEEKDAYS.forEach(d => plan[d] = {sessionType:'', description:''});
+  return { todos:[], events:[], trainingPlan:plan, trainingLog:[], journalEntries:[], goals:[], assistantLog:[], garminDays:[], garminActivities:[], supplementsLog:[], fitnessMetrics:null, garminLastSync:null };
+}
+let state = defaultState();
+async function loadState(){
+  try{
+    const res = await fetch(API_BASE + '/state');
+    if(!res.ok) throw new Error('status ' + res.status);
+    const parsed = await res.json();
+    const base = defaultState();
+    state = Object.assign(base, parsed, {trainingPlan: Object.assign(base.trainingPlan, parsed.trainingPlan||{})});
+  }catch(e){
+    console.warn('Server nicht erreichbar, starte mit leerem Zustand.', e);
+    showToast('⚠️ Server nicht erreichbar – Launcher starten (Life Dashboard.command)');
+  }
+  renderAll();
+  initTilt();
+}
+function saveState(){
+  fetch(API_BASE + '/state', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(state)
+  }).catch(e=>{
+    console.warn('Speichern fehlgeschlagen.', e);
+    showToast('⚠️ Konnte nicht speichern – läuft der Server noch?');
+  });
+}
+function update(){ saveState(); renderAll(); }
+
+/* ── HELFER ── */
+function newId(){ return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function todayStr(dateObj = new Date()){
+  return `${dateObj.getFullYear()}-${pad2(dateObj.getMonth()+1)}-${pad2(dateObj.getDate())}`;
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function formatDateShort(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'});
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=> t.classList.remove('show'), 2200);
+}
+function getWeekDates(){
+  const now = new Date();
+  const dow = (now.getDay()+6)%7; // Montag=0 .. Sonntag=6
+  const monday = new Date(now); monday.setDate(now.getDate()-dow);
+  return WEEKDAYS.map((_,i)=>{ const d=new Date(monday); d.setDate(monday.getDate()+i); return todayStr(d); });
+}
+
+/* ── NAVIGATION ── */
+function switchView(view){
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view===view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id==='view-'+view));
+  if(view==='calendar'){ renderCalendar(); checkIcloudPending(); }
+  if(view==='sport') renderSportPage();
+}
+document.getElementById('topnav').addEventListener('click', e=>{
+  const btn = e.target.closest('.nav-item');
+  if(btn) switchView(btn.dataset.view);
+});
+
+/* ── TODOS ── */
+function addTodoFromInput(inputId){
+  const input = document.getElementById(inputId);
+  const text = input.value.trim();
+  if(!text) return;
+  const dateEl = document.getElementById('todos-date');
+  const date = (inputId==='todos-input' && dateEl && dateEl.value) ? dateEl.value : todayStr();
+  state.todos.push({id:newId(), text, done:false, date, priority:'none'});
+  input.value = '';
+  update();
+}
+function toggleTodo(id){
+  const t = state.todos.find(x=>x.id===id);
+  if(t){ t.done = !t.done; update(); }
+}
+function deleteTodo(id){
+  state.todos = state.todos.filter(x=>x.id!==id);
+  update();
+}
+function moveTodoDate(id, newDate){
+  const t = state.todos.find(x=>x.id===id);
+  if(t && newDate){ t.date = newDate; update(); showToast('Verschoben auf ' + formatDateShort(newDate)); }
+}
+function cycleTodoPriority(id){
+  const t = state.todos.find(x=>x.id===id);
+  if(!t) return;
+  const order = ['none','small','big'];
+  const idx = order.indexOf(t.priority || 'none');
+  t.priority = order[(idx+1)%order.length];
+  update();
+}
+function getStaleTodos(){
+  const today = todayStr();
+  return state.todos.filter(t => !t.done && t.date < today);
+}
+function moveTodoToToday(id){ moveTodoDate(id, todayStr()); }
+function moveTodoToPicked(id){
+  const input = document.getElementById('rd-'+id);
+  if(input && input.value) moveTodoDate(id, input.value);
+}
+function discardTodo(id){ deleteTodo(id); showToast('Verworfen'); }
+
+function renderTodoListItem(t, opts){
+  opts = opts || {};
+  const dateBadge = opts.showDate ? `<input type="date" class="ci-date" value="${t.date}" onchange="moveTodoDate('${t.id}', this.value)">` : '';
+  const prio = t.priority || 'none';
+  const prioLabel = {none:'keine', small:'klein', big:'groß'}[prio];
+  return `<li class="check-item ${t.done?'done':''}">
+    <input type="checkbox" class="chk" ${t.done?'checked':''} onchange="toggleTodo('${t.id}')">
+    <span class="ci-text">${escapeHtml(t.text)}</span>
+    ${dateBadge}
+    <span class="prio-dot" data-p="${prio}" onclick="cycleTodoPriority('${t.id}')" title="Priorität: ${prioLabel} (klicken zum Ändern)"></span>
+    <button class="ci-del" onclick="deleteTodo('${t.id}')" title="Löschen">×</button>
+  </li>`;
+}
+
+/* Supplements: fester Tagespunkt, eigener Log (kein normales To-Do, damit die Rückschau nicht meckert) */
+function isSuppDoneToday(){
+  const s = (state.supplementsLog||[]).find(l=>l.date===todayStr());
+  return s ? !!s.done : false;
+}
+function toggleSupplements(checked){
+  let s = state.supplementsLog.find(l=>l.date===todayStr());
+  if(!s){ s = {date:todayStr(), done:false}; state.supplementsLog.push(s); }
+  s.done = checked;
+  update();
+}
+function renderOverviewTodos(){
+  const today = todayStr();
+  const list = state.todos.filter(t=>t.date===today).sort((a,b)=> a.done - b.done);
+  const el = document.getElementById('ov-todo-list');
+  const suppDone = isSuppDoneToday();
+  const suppRow = `<li class="supp-row ${suppDone?'done':''}">
+    <input type="checkbox" class="chk" ${suppDone?'checked':''} onchange="toggleSupplements(this.checked)">
+    <span class="ci-text">💊 Supplements</span>
+    <span class="supp-badge">täglich</span>
+  </li>`;
+  el.innerHTML = suppRow + (list.length ? list.map(t=>renderTodoListItem(t,{showDate:false})).join('') :
+    '<div class="empty-state" style="padding:14px 4px">Keine weiteren To-Dos für heute.</div>');
+}
+function renderTodosPage(){
+  const sorted = [...state.todos].sort((a,b)=> a.date.localeCompare(b.date) || (a.done - b.done));
+  const el = document.getElementById('todos-full-list');
+  el.innerHTML = sorted.length ? sorted.map(t=>renderTodoListItem(t,{showDate:true})).join('') :
+    '<div class="empty-state">Noch keine To-Dos angelegt.</div>';
+}
+
+function renderReviewBanner(){
+  const stale = getStaleTodos();
+  const banner = document.getElementById('ov-review-banner');
+  if(!stale.length){ banner.style.display='none'; return; }
+  banner.style.display='block';
+  document.getElementById('ov-review-list').innerHTML = stale.map(t => `
+    <div class="review-item">
+      <span class="review-text">${escapeHtml(t.text)} <span style="color:var(--muted2)">(${formatDateShort(t.date)})</span></span>
+      <div class="review-actions">
+        <button class="btn btn-ghost btn-sm" onclick="moveTodoToToday('${t.id}')">Heute</button>
+        <input type="date" id="rd-${t.id}">
+        <button class="btn btn-ghost btn-sm" onclick="moveTodoToPicked('${t.id}')">Verschieben</button>
+        <button class="btn btn-danger-o btn-sm" onclick="discardTodo('${t.id}')">Verwerfen</button>
+      </div>
+    </div>`).join('');
+}
+
+/* ── TAGEBUCH ── */
+let journalMood = '🙂';
+let journalProd = 3;
+let journalRevealed = false;
+function toggleJournalCard(){
+  const card = document.getElementById('journal-card');
+  card.classList.toggle('open');
+  if(card.classList.contains('open')) drawMoodChart();
+}
+let moodChartRange = 7;
+const MOOD_VALUES = {'😞':1,'😐':2,'🙂':3,'😄':4,'🤩':5};
+function setMoodRange(days, btn){
+  moodChartRange = days;
+  document.querySelectorAll('.mood-range').forEach(b=>b.classList.toggle('active', b===btn));
+  drawMoodChart();
+}
+function drawMoodChart(){
+  const box = document.getElementById('mood-chart-box');
+  if(!box) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-moodChartRange);
+  const cutoffStr = todayStr(cutoff);
+  const byDate = {};
+  (state.journalEntries||[]).forEach(j=>{
+    const v = MOOD_VALUES[j.mood];
+    if(!v || j.date < cutoffStr) return;
+    (byDate[j.date] = byDate[j.date]||[]).push(v);
+  });
+  const dates = Object.keys(byDate).sort();
+  if(dates.length < 2){
+    box.innerHTML = '<div class="empty-state" style="padding:10px 4px">Noch zu wenige Einträge für eine Kurve – einfach weiter Tagebuch führen.</div>';
+    return;
+  }
+  const w = 560, h = 110, pad = 22;
+  const pts = dates.map((d,i)=>{
+    const avg = byDate[d].reduce((a,b)=>a+b,0)/byDate[d].length;
+    return {x: pad + i*(w-2*pad)/(dates.length-1), y: h-pad-((avg-1)/4)*(h-2*pad), d};
+  });
+  const line = pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const dots = pts.map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="var(--accent2)"></circle>`).join('');
+  const showEvery = Math.max(1, Math.ceil(pts.length/6));
+  const labels = pts.map((p,i)=> (i%showEvery===0 || i===pts.length-1) ? `<text x="${p.x.toFixed(1)}" y="${h-3}" font-size="9" fill="var(--muted)" text-anchor="middle">${formatDateShort(p.d)}</text>` : '').join('');
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:110px">
+    <text x="2" y="${pad+4}" font-size="11">🤩</text><text x="2" y="${h-pad+4}" font-size="11">😞</text>
+    <polyline points="${line}" fill="none" stroke="var(--accent2)" stroke-width="2"></polyline>
+    ${dots}${labels}</svg>`;
+}
+function selectJournalMood(el){
+  journalMood = el.dataset.m;
+  document.querySelectorAll('#journal-mood-row .mood-opt').forEach(m=>m.classList.remove('active'));
+  el.classList.add('active');
+}
+function setJournalProd(v){
+  journalProd = v;
+  document.querySelectorAll('#journal-prod-bars .pbar').forEach(b=>{
+    b.classList.toggle('filled', parseInt(b.dataset.v,10) <= v);
+  });
+}
+function saveJournalEntry(){
+  const noteEl = document.getElementById('journal-note');
+  const note = noteEl.value.trim();
+  state.journalEntries.unshift({id:newId(), date:todayStr(), mood:journalMood, productivity:journalProd, note});
+  noteEl.value = '';
+  update();
+  showToast('Eintrag gespeichert');
+}
+function toggleJournalReveal(){
+  journalRevealed = !journalRevealed;
+  document.getElementById('journal-reveal-btn').textContent = journalRevealed ? 'Verbergen' : 'Anzeigen';
+  renderJournalCard();
+}
+function renderJournalCard(){
+  document.querySelectorAll('#journal-mood-row .mood-opt').forEach(m=>m.classList.toggle('active', m.dataset.m===journalMood));
+  document.querySelectorAll('#journal-prod-bars .pbar').forEach(b=>{
+    b.classList.toggle('filled', parseInt(b.dataset.v,10) <= journalProd);
+  });
+  const list = state.journalEntries.slice(0,10);
+  const el = document.getElementById('journal-entries-list');
+  el.innerHTML = list.length ? list.map(j => {
+    let noteDisplay;
+    if(!j.note){ noteDisplay = '<span class="je-empty">–</span>'; }
+    else if(journalRevealed){ noteDisplay = escapeHtml(j.note); }
+    else { noteDisplay = '★'.repeat(Math.min(30, Math.max(6, j.note.length))); }
+    return `<div class="journal-entry">
+      <span class="je-date">${formatDateShort(j.date)}</span><span class="je-mood">${j.mood}</span>
+      <span class="je-note">${noteDisplay}</span>
+    </div>`;
+  }).join('') : '<div class="empty-state" style="padding:10px 4px">Noch keine Einträge.</div>';
+  if(document.getElementById('journal-card').classList.contains('open')) drawMoodChart();
+}
+
+/* ── ZIELE ── */
+function addGoalFromInput(){
+  const input = document.getElementById('goal-input');
+  const text = input.value.trim();
+  if(!text) return;
+  state.goals.push({id:newId(), text, createdDate:todayStr()});
+  input.value = '';
+  update();
+}
+function deleteGoal(id){
+  state.goals = state.goals.filter(g=>g.id!==id);
+  update();
+}
+function renderGoalsCard(){
+  const el = document.getElementById('goals-list');
+  el.innerHTML = state.goals.length ? state.goals.map(g => `
+    <li class="check-item">
+      <span class="ci-text">${escapeHtml(g.text)}</span>
+      <button class="ci-del" onclick="deleteGoal('${g.id}')" title="Löschen">×</button>
+    </li>`).join('') : '<div class="empty-state">Noch keine Ziele eingetragen.</div>';
+}
+
+/* ── TRAININGSPLAN ── */
+let trainCustomOpen = {};
+function renderTrainingPicker(dateStr, options, currentChoice){
+  if(!options || !options.length) return '';
+  const pills = options.map(opt => {
+    const sel = opt === currentChoice;
+    return `<span class="train-opt ${sel?'selected':''}" onclick="setTrainingChoice('${dateStr}','${escapeHtml(opt)}')">${sel?'✓ ':''}${escapeHtml(opt)}</span>`;
+  }).join('');
+  const isCustomChoice = currentChoice && !options.includes(currentChoice);
+  const customPill = `<span class="train-opt custom-trigger ${isCustomChoice?'selected':''}" onclick="toggleCustomTraining('${dateStr}')">${isCustomChoice ? '✓ '+escapeHtml(currentChoice) : '+ Eigene'}</span>`;
+  const inputRow = trainCustomOpen[dateStr] ? `
+    <input type="text" class="train-custom-input" id="train-custom-${dateStr}" placeholder="z. B. Radfahren" onkeydown="if(event.key==='Enter')confirmCustomTraining('${dateStr}')">
+    <button class="btn btn-accent btn-sm" onclick="confirmCustomTraining('${dateStr}')">✓</button>` : '';
+  return `<div class="train-picker">${pills}${customPill}${inputRow}</div>`;
+}
+function setTrainingChoice(dateStr, choice){
+  trainCustomOpen[dateStr] = false;
+  let log = state.trainingLog.find(l=>l.date===dateStr);
+  if(!log){ log = {date:dateStr, done:false, choice:null}; state.trainingLog.push(log); }
+  if(log.choice === choice){ log.done = false; log.choice = null; }
+  else { log.done = true; log.choice = choice; }
+  update();
+}
+function toggleCustomTraining(dateStr){
+  trainCustomOpen[dateStr] = !trainCustomOpen[dateStr];
+  renderAll();
+}
+function confirmCustomTraining(dateStr){
+  const el = document.getElementById('train-custom-'+dateStr);
+  const val = el ? el.value.trim() : '';
+  if(!val) return;
+  setTrainingChoice(dateStr, val);
+}
+function renderTrainingPlanPage(){
+  const todayName = DOW_NAMES[new Date().getDay()];
+  const weekDates = getWeekDates();
+  const tbody = document.getElementById('plan-tbody');
+  tbody.innerHTML = WEEKDAYS.map((day, i) => {
+    const entry = state.trainingPlan[day] || {sessionType:'', options:[]};
+    const logDate = weekDates[i];
+    const log = state.trainingLog.find(l=>l.date===logDate);
+    const done = log ? log.done : false;
+    const hasOptions = entry.options && entry.options.length;
+    const checkCell = hasOptions
+      ? `<td>${renderTrainingPicker(logDate, entry.options, log ? log.choice : null)}</td>`
+      : `<td class="plan-check-cell"><input type="checkbox" class="chk" ${done?'checked':''} onchange="setTrainingDone('${logDate}', this.checked)"></td>`;
+    return `<tr>
+      <td class="plan-weekday ${day===todayName?'today':''}">${day}</td>
+      <td><input type="text" class="plan-input" placeholder="– noch nicht festgelegt –" value="${escapeHtml(entry.sessionType||'')}" onchange="setTrainingSession('${day}', this.value)"></td>
+      ${checkCell}
+    </tr>`;
+  }).join('');
+}
+function setTrainingSession(day, value){
+  state.trainingPlan[day] = state.trainingPlan[day] || {};
+  state.trainingPlan[day].sessionType = value;
+  update();
+}
+function setTrainingDone(dateStr, done){
+  let log = state.trainingLog.find(l=>l.date===dateStr);
+  if(!log){ log = {date:dateStr, done:false}; state.trainingLog.push(log); }
+  log.done = done;
+  update();
+}
+function renderOverviewTraining(){
+  const todayName = DOW_NAMES[new Date().getDay()];
+  const entry = state.trainingPlan[todayName] || {sessionType:'', options:[]};
+  const today = todayStr();
+  const log = state.trainingLog.find(l=>l.date===today);
+  const done = log ? log.done : false;
+  const hasOptions = entry.options && entry.options.length;
+  const body = hasOptions
+    ? renderTrainingPicker(today, entry.options, log ? log.choice : null)
+    : `<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" class="chk" ${done?'checked':''} onchange="setTrainingDone('${today}', this.checked)"> Heute erledigt
+      </label>`;
+  const weekDates = getWeekDates();
+  const planned = WEEKDAYS.map((d,i)=>({day:d, date:weekDates[i]}))
+    .filter(x => {
+      const s = (state.trainingPlan[x.day]||{}).sessionType || '';
+      return s && !s.toLowerCase().includes('ruhetag');
+    });
+  const doneCount = planned.filter(x => {
+    const l = state.trainingLog.find(l=>l.date===x.date);
+    return l && l.done;
+  }).length;
+  const weekLine = planned.length
+    ? `<div class="sport-sub" style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border)">Diese Woche: ${doneCount} von ${planned.length} Sessions erledigt</div>` : '';
+  document.getElementById('ov-training-body').innerHTML = `
+    <div style="font-size:15px;font-weight:600;margin-bottom:10px">${escapeHtml(entry.sessionType) || '<span style="color:var(--muted2)">– noch nicht festgelegt –</span>'}</div>
+    ${body}
+    ${weekLine}`;
+}
+
+/* ── KALENDER: WIEDERHOLUNGEN ── */
+function occursOn(ev, dateStr){
+  if(ev.exceptions && ev.exceptions.includes(dateStr)) return false;
+  const base = new Date(ev.date+'T00:00:00');
+  const target = new Date(dateStr+'T00:00:00');
+  if(target < base) return false;
+  if(!ev.recurrence || ev.recurrence==='none'){
+    if(ev.endDate && ev.endDate > ev.date) return dateStr >= ev.date && dateStr <= ev.endDate;
+    return dateStr === ev.date;
+  }
+  const interval = ev.interval || 1;
+  const diffDays = Math.round((target-base)/86400000);
+  if(ev.recurrence==='daily') return diffDays % interval === 0;
+  if(ev.recurrence==='weekly') return diffDays % 7 === 0 && (diffDays/7) % interval === 0;
+  if(ev.recurrence==='monthly'){
+    if(target.getDate() !== base.getDate()) return false;
+    const diffMonths = (target.getFullYear()-base.getFullYear())*12 + (target.getMonth()-base.getMonth());
+    return diffMonths>=0 && diffMonths % interval === 0;
+  }
+  if(ev.recurrence==='yearly'){
+    if(target.getDate()!==base.getDate() || target.getMonth()!==base.getMonth()) return false;
+    const diffYears = target.getFullYear()-base.getFullYear();
+    return diffYears>=0 && diffYears % interval === 0;
+  }
+  return false;
+}
+function getOccurrencesOn(dateStr){
+  return state.events.filter(ev => occursOn(ev, dateStr));
+}
+function getUpcomingBig(days){
+  const out = [];
+  const seen = new Set();
+  const now = new Date();
+  for(let i=0;i<=days;i++){
+    const d = new Date(now); d.setDate(now.getDate()+i);
+    const ds = todayStr(d);
+    getOccurrencesOn(ds).filter(ev=>ev.priority==='big').forEach(ev=>{
+      // Mehrtägige Termine nur einmal listen, nicht für jeden Tag der Spanne
+      if(ev.endDate && seen.has(ev.id)) return;
+      seen.add(ev.id);
+      out.push({date:ds, ev});
+    });
+  }
+  return out;
+}
+function renderOverviewUpcoming(){
+  const items = getUpcomingBig(3);
+  const el = document.getElementById('ov-upcoming-body');
+  el.innerHTML = items.length ? items.map(({date,ev}) => `
+    <div class="up-item"><span class="up-date">${formatDateShort(date)}</span><span class="up-title">${escapeHtml(ev.title)}</span></div>
+  `).join('') : '<div class="empty-state">Keine wichtigen Termine in den nächsten 3 Tagen.</div>';
+}
+
+/* ── KALENDER: MONATSRASTER ── */
+const CATEGORY_COLORS = {trading:'var(--cat-trading)', schule:'var(--cat-schule)', sport:'var(--cat-sport)', privat:'var(--cat-privat)'};
+const nowD = new Date();
+let calViewYear = nowD.getFullYear();
+let calViewMonth = nowD.getMonth();
+function calShift(delta){
+  calViewMonth += delta;
+  if(calViewMonth<0){ calViewMonth=11; calViewYear--; }
+  if(calViewMonth>11){ calViewMonth=0; calViewYear++; }
+  renderCalendar();
+}
+function calToday(){
+  calViewYear = nowD.getFullYear(); calViewMonth = nowD.getMonth();
+  renderCalendar();
+}
+function renderCalendar(){
+  const label = new Date(calViewYear, calViewMonth, 1).toLocaleDateString('de-DE',{month:'long', year:'numeric'});
+  document.getElementById('cal-month-label').textContent = label.charAt(0).toUpperCase()+label.slice(1);
+
+  const dowRow = ['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  const firstOfMonth = new Date(calViewYear, calViewMonth, 1);
+  const startOffset = (firstOfMonth.getDay()+6)%7;
+  const daysInMonth = new Date(calViewYear, calViewMonth+1, 0).getDate();
+  const todayS = todayStr();
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += '<div class="cal-day empty"></div>';
+  for(let day=1; day<=daysInMonth; day++){
+    const dateStr = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(day)}`;
+    const occ = getOccurrencesOn(dateStr);
+    const pills = occ.map(ev => {
+      const catColor = CATEGORY_COLORS[ev.category] || CATEGORY_COLORS.privat;
+      const cont = ev.endDate && dateStr > ev.date ? ' cont' : '';
+      return `<div class="cal-pill ${ev.priority==='big'?'big':'small'}${cont}" onclick="event.stopPropagation(); openEventEditor('${ev.id}','${dateStr}')" title="${escapeHtml(ev.title)}"><span class="cat-dot" style="background:${catColor}"></span>${escapeHtml(ev.title)}</div>`;
+    }).join('');
+    cells += `<div class="cal-day ${dateStr===todayS?'today':''}" onclick="openEventCreator('${dateStr}')">
+      <div class="cal-day-num">${day}</div>${pills}
+    </div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = dowRow + cells;
+}
+
+/* ── KALENDER: TERMIN ANLEGEN / BEARBEITEN ── */
+let editingMode = 'new'; // 'new' | 'whole' | 'single'
+let editingEventId = null;
+let editingOccurrenceSourceId = null;
+let editingOccurrenceDate = null;
+let currentPriorityChoice = 'small';
+let currentCategoryChoice = 'privat';
+
+function openOverlay(id){ document.getElementById(id).classList.add('open'); }
+function closeOverlay(id){ document.getElementById(id).classList.remove('open'); }
+
+function setPriorityChoice(p){
+  currentPriorityChoice = p;
+  document.querySelectorAll('#modal-event .priority-toggle:not(#ev-category-toggle) .priority-opt').forEach(el => el.classList.toggle('selected', el.dataset.p===p));
+}
+function setCategoryChoice(c){
+  currentCategoryChoice = c;
+  document.querySelectorAll('.cat-opt').forEach(el => el.classList.toggle('selected', el.dataset.c===c));
+}
+function onRecurrenceChange(){
+  const rec = document.getElementById('ev-recurrence').value;
+  const field = document.getElementById('ev-interval-field');
+  const endEl = document.getElementById('ev-enddate');
+  // Wiederholung + Enddatum gleichzeitig gibt es nicht — Serie gewinnt
+  endEl.disabled = rec !== 'none';
+  if(rec !== 'none') endEl.value = '';
+  if(rec==='none'){ field.style.display='none'; return; }
+  field.style.display='block';
+  document.getElementById('ev-interval-label').textContent = 'Alle wie viele ' + INTERVAL_LABELS[rec] + '?';
+}
+function fillEventForm(data, isExisting){
+  document.getElementById('ev-modal-title').textContent = isExisting ? 'Termin bearbeiten' : 'Neuer Termin';
+  document.getElementById('ev-title').value = data.title || '';
+  document.getElementById('ev-date').value = data.date || todayStr();
+  document.getElementById('ev-enddate').value = data.endDate || '';
+  document.getElementById('ev-time').value = data.time || '';
+  document.getElementById('ev-recurrence').value = data.recurrence || 'none';
+  document.getElementById('ev-interval').value = data.interval || 1;
+  onRecurrenceChange();
+  setPriorityChoice(data.priority || 'small');
+  setCategoryChoice(data.category || 'privat');
+  document.getElementById('ev-delete-btn').style.display = isExisting ? 'inline-block' : 'none';
+}
+function openEventCreator(dateStr){
+  editingMode='new'; editingEventId=null; editingOccurrenceSourceId=null; editingOccurrenceDate=null;
+  fillEventForm({title:'', date:dateStr, endDate:'', time:'', recurrence:'none', interval:1, priority:'small', category:'privat'}, false);
+  openOverlay('modal-event');
+}
+function openEventEditor(eventId, occurrenceDate){
+  const base = state.events.find(e=>e.id===eventId);
+  if(!base) return;
+  if(!base.recurrence || base.recurrence==='none'){
+    editingMode='whole'; editingEventId=eventId; editingOccurrenceSourceId=null; editingOccurrenceDate=null;
+    fillEventForm(base, true);
+    openOverlay('modal-event');
+    return;
+  }
+  pendingSeriesTarget = {eventId, occurrenceDate};
+  document.getElementById('series-choice-title').textContent = 'Diesen Termin bearbeiten';
+  openOverlay('modal-series-choice');
+}
+let pendingSeriesTarget = null;
+function resolveSeriesChoice(choice){
+  closeOverlay('modal-series-choice');
+  if(!pendingSeriesTarget) return;
+  const {eventId, occurrenceDate} = pendingSeriesTarget;
+  const base = state.events.find(e=>e.id===eventId);
+  if(!base) return;
+  if(choice==='whole'){
+    editingMode='whole'; editingEventId=eventId; editingOccurrenceSourceId=null; editingOccurrenceDate=null;
+    fillEventForm(base, true);
+  } else {
+    editingMode='single'; editingEventId=null; editingOccurrenceSourceId=eventId; editingOccurrenceDate=occurrenceDate;
+    fillEventForm(Object.assign({}, base, {date:occurrenceDate, recurrence:'none'}), true);
+  }
+  openOverlay('modal-event');
+}
+function saveEventForm(){
+  const title = document.getElementById('ev-title').value.trim();
+  if(!title){ showToast('Bitte einen Titel eingeben'); return; }
+  const date = document.getElementById('ev-date').value;
+  if(!date){ showToast('Bitte ein Datum wählen'); return; }
+  const time = document.getElementById('ev-time').value || null;
+  const recurrence = document.getElementById('ev-recurrence').value;
+  const interval = Math.max(1, parseInt(document.getElementById('ev-interval').value,10) || 1);
+  const endDateRaw = document.getElementById('ev-enddate').value || null;
+  if(endDateRaw && endDateRaw < date){ showToast('„Bis" liegt vor dem Startdatum'); return; }
+  const endDate = (recurrence==='none' && endDateRaw && endDateRaw > date) ? endDateRaw : null;
+  const priority = currentPriorityChoice;
+  const category = currentCategoryChoice;
+
+  if(editingMode==='single'){
+    const src = state.events.find(e=>e.id===editingOccurrenceSourceId);
+    if(src){ src.exceptions = src.exceptions||[]; if(!src.exceptions.includes(editingOccurrenceDate)) src.exceptions.push(editingOccurrenceDate); }
+    state.events.push({id:newId(), title, date, endDate, time, recurrence:'none', interval:1, priority, category, source:'dashboard', icloudUid:null, exceptions:[]});
+    showToast('Einzelner Termin gespeichert');
+  } else if(editingMode==='whole' && editingEventId){
+    const ev = state.events.find(e=>e.id===editingEventId);
+    Object.assign(ev, {title, date, endDate, time, recurrence, interval, priority, category});
+    showToast('Termin gespeichert');
+  } else {
+    state.events.push({id:newId(), title, date, endDate, time, recurrence, interval, priority, category, source:'dashboard', icloudUid:null, exceptions:[]});
+    showToast('Termin angelegt');
+  }
+  update();
+  closeOverlay('modal-event');
+}
+function deleteEventForm(){
+  if(editingMode==='single'){
+    const src = state.events.find(e=>e.id===editingOccurrenceSourceId);
+    if(src){ src.exceptions = src.exceptions||[]; if(!src.exceptions.includes(editingOccurrenceDate)) src.exceptions.push(editingOccurrenceDate); }
+    showToast('Diesen Termin übersprungen');
+  } else if(editingEventId){
+    state.events = state.events.filter(e=>e.id!==editingEventId);
+    showToast('Termin gelöscht');
+  }
+  update();
+  closeOverlay('modal-event');
+}
+
+/* ── OVERVIEW: DATUM ── */
+function renderOverviewDate(){
+  const now = new Date();
+  document.getElementById('ov-hello-date').textContent =
+    now.toLocaleDateString('de-DE', {weekday:'long', day:'numeric', month:'long'});
+}
+
+/* ── SCHLAF-PLATZHALTER ── */
+function fmtHm(seconds){
+  if(seconds==null) return '–';
+  const h = Math.floor(seconds/3600), m = Math.round((seconds%3600)/60);
+  return `${h}h${String(m).padStart(2,'0')}m`;
+}
+function scoreLabel(score){
+  if(score==null) return '';
+  if(score>=80) return 'gut';
+  if(score>=60) return 'okay';
+  return 'niedrig';
+}
+function scoreColor(score){
+  if(score==null) return 'var(--muted)';
+  if(score>=80) return 'var(--success)';
+  if(score>=60) return 'var(--warn)';
+  return 'var(--danger)';
+}
+function buildSleepClock(day, size){
+  const deep = day.deepSleepSeconds||0, light = day.lightSleepSeconds||0,
+        rem = day.remSleepSeconds||0, awake = day.awakeSleepSeconds||0;
+  const total = deep + light + rem + awake;
+  const c = size/2, r = c - 9, C = 2*Math.PI*r;
+  let off = 0, arcs = '';
+  if(total > 0){
+    [[deep,'#4a3fd4'],[light,'#6c63ff'],[rem,'#9d97ff'],[awake,'#55536b']].forEach(([sec,col])=>{
+      if(!sec) return;
+      const len = Math.max(0, sec/total*C - 2);
+      arcs += `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${col}" stroke-width="13" stroke-linecap="butt"
+        stroke-dasharray="${len.toFixed(1)} ${(C-len).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 ${c} ${c})"></circle>`;
+      off += sec/total*C;
+    });
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex-shrink:0">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="13"></circle>
+    ${arcs}
+    <text x="${c}" y="${c-1}" text-anchor="middle" fill="var(--text)" font-size="${size>=120?'17':'15'}" font-weight="600" font-family="inherit">${fmtHm(day.sleepSeconds)}</text>
+    <text x="${c}" y="${c+15}" text-anchor="middle" fill="${scoreColor(day.sleepScore)}" font-size="10">Score ${day.sleepScore ?? '–'}</text>
+  </svg>`;
+}
+function sleepLegend(day){
+  return `<div class="sleep-legend">
+    <div><span class="leg-dot" style="background:#4a3fd4"></span>Tiefschlaf <b>${fmtHm(day.deepSleepSeconds)}</b></div>
+    <div><span class="leg-dot" style="background:#6c63ff"></span>Leichtschlaf <b>${fmtHm(day.lightSleepSeconds)}</b></div>
+    <div><span class="leg-dot" style="background:#9d97ff"></span>REM <b>${fmtHm(day.remSleepSeconds)}</b></div>
+    <div><span class="leg-dot" style="background:#55536b"></span>Wach <b>${fmtHm(day.awakeSleepSeconds)}</b></div>
+  </div>`;
+}
+function renderSleepCard(){
+  const days = state.garminDays || [];
+  const el = document.getElementById('ov-sleep-body');
+  if(!days.length){
+    el.innerHTML = `<div class="empty-state" style="padding:14px 4px"><span class="ee-icon">🌙</span>Noch keine Garmin-Daten – Server einmal starten.</div>`;
+    return;
+  }
+  const latest = days[0];
+  // Falls die Uhr heute noch nicht gesynct hat, die letzte Nacht mit Daten zeigen statt einer leeren Uhr
+  const sleepDay = days.find(d => d.sleepSeconds != null) || latest;
+  const nightNote = sleepDay.date !== todayStr() ? `Nacht auf den ${formatDateShort(sleepDay.date)} · ` : '';
+  const hasStages = sleepDay.deepSleepSeconds!=null || sleepDay.lightSleepSeconds!=null || sleepDay.remSleepSeconds!=null;
+  const main = hasStages
+    ? `<div class="sleep-clock">${buildSleepClock(sleepDay, 128)}${sleepLegend(sleepDay)}</div>`
+    : `<div class="sport-stat">${fmtHm(sleepDay.sleepSeconds)}</div>
+       <div class="sport-sub" style="color:${scoreColor(sleepDay.sleepScore)}">Score ${sleepDay.sleepScore ?? '–'} · ${scoreLabel(sleepDay.sleepScore)}</div>`;
+  el.innerHTML = `${main}
+    <div class="sport-sub" style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border)">${nightNote}Ruhepuls ${latest.restingHr ?? '–'} · ${latest.steps?.toLocaleString('de-DE') ?? '–'} Schritte gestern</div>`;
+}
+
+/* ── SPORTANALYSEN ── */
+function relTime(iso){
+  if(!iso) return 'Noch nie synchronisiert';
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime())/60000);
+  if(diffMin < 1) return 'Gerade eben synchronisiert';
+  if(diffMin < 60) return `Vor ${diffMin} Min. synchronisiert`;
+  const diffH = Math.round(diffMin/60);
+  if(diffH < 24) return `Vor ${diffH} Std. synchronisiert`;
+  return `Vor ${Math.round(diffH/24)} Tagen synchronisiert`;
+}
+let sleepChartRange = 7;
+const ACT_ICONS = {running:'🏃', treadmill_running:'🏃', trail_running:'🏃', track_running:'🏃',
+  swimming:'🏊', lap_swimming:'🏊', open_water_swimming:'🏊',
+  cycling:'🚴', road_biking:'🚴', mountain_biking:'🚴', indoor_cycling:'🚴',
+  strength_training:'🏋️', walking:'🚶', hiking:'🥾', fitness_equipment:'💪', cardio:'💪'};
+function renderActivities(){
+  const el = document.getElementById('sport-acts-body');
+  if(!el) return;
+  const acts = (state.garminActivities || []).slice(0, 6);
+  el.innerHTML = acts.length ? acts.map(a => {
+    const icon = ACT_ICONS[a.type] || '💪';
+    const date = a.startTime ? formatDateShort(a.startTime.slice(0,10)) : '–';
+    const dist = a.distanceM && a.distanceM > 100 ? (a.distanceM/1000).toLocaleString('de-DE',{maximumFractionDigits:1}) + ' km · ' : '';
+    const hr = a.avgHr ? ` · Ø ${a.avgHr} bpm` : '';
+    const kcal = a.calories ? ` · ${a.calories} kcal` : '';
+    return `<div class="up-item">
+      <span style="font-size:16px;flex-shrink:0">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.name || a.type || 'Training')}</div>
+        <div style="font-size:11px;color:var(--muted)">${date} · ${dist}${fmtHm(a.durationSeconds)}${hr}${kcal}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty-state"><span class="ee-icon">🏋️</span>Noch keine Trainings von der Uhr übertragen – nach dem nächsten Sync tauchen sie hier auf.</div>';
+}
+function renderFitness(){
+  const el = document.getElementById('sport-fitness-body');
+  if(!el) return;
+  const fm = state.fitnessMetrics;
+  if(!fm || fm.vo2max == null){
+    el.innerHTML = '<div class="empty-state"><span class="ee-icon">🫀</span>Noch keine VO2max-Daten – kommt mit dem nächsten GPS-Lauf.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="sport-stat">${fm.vo2max.toLocaleString('de-DE',{maximumFractionDigits:1})}</div>
+    <div class="sport-sub">VO2max · vom letzten Lauf (${formatDateShort(fm.date)})</div>
+    <div class="sport-sub" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">Fitnessalter: ${fm.fitnessAge != null ? fm.fitnessAge.toLocaleString('de-DE',{maximumFractionDigits:0}) + ' Jahre' : '– (liefert deine Uhr dafür nicht)'}</div>`;
+}
+function renderSportPage(){
+  const days = state.garminDays || [];
+  const connBody = document.getElementById('sport-conn-body');
+  const hrBody = document.getElementById('sport-hr-body');
+  const sleepBody = document.getElementById('sport-sleep-body');
+  if(!connBody) return;
+  renderActivities();
+  renderFitness();
+  if(!days.length){
+    connBody.innerHTML = `<div class="empty-state"><span class="ee-icon">⌚</span>Noch keine Daten – Server einmal starten.</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" id="sport-sync-btn" onclick="syncGarmin()">Jetzt synchronisieren</button>`;
+    hrBody.innerHTML = `<div class="empty-state">Noch keine Daten.</div>`;
+    sleepBody.innerHTML = `<div class="empty-state">Noch keine Daten.</div>`;
+    return;
+  }
+  const today = days[0];
+  connBody.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block"></span>
+      <span style="font-size:13px">Verbunden</span>
+    </div>
+    <div class="sport-sub">${relTime(state.garminLastSync)}</div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" id="sport-sync-btn" onclick="syncGarmin()">Jetzt synchronisieren</button>`;
+  hrBody.innerHTML = `<div class="sport-stat">${today.restingHr ?? '–'}</div><div class="sport-sub">Schläge/Min · heute</div>`;
+  const sleepDay = days.find(d => d.sleepSeconds != null) || today;
+  const nightNote = sleepDay.date !== todayStr() ? `<div class="sport-sub" style="margin-top:6px">Nacht auf den ${formatDateShort(sleepDay.date)}</div>` : '';
+  const hasStages = sleepDay.deepSleepSeconds!=null || sleepDay.lightSleepSeconds!=null || sleepDay.remSleepSeconds!=null;
+  const sleepMain = (hasStages
+    ? `<div class="sleep-clock">${buildSleepClock(sleepDay, 112)}<div style="font-size:11px">${sleepLegend(sleepDay)}</div></div>`
+    : `<div class="sport-stat">${fmtHm(sleepDay.sleepSeconds)}</div>
+       <div class="sport-sub" style="color:${scoreColor(sleepDay.sleepScore)}">Score ${sleepDay.sleepScore ?? '–'} · ${scoreLabel(sleepDay.sleepScore)}</div>`) + nightNote;
+  const wasOpen = document.getElementById('sleep-expand-body') && document.getElementById('sleep-expand-body').style.display === 'block';
+  sleepBody.innerHTML = `
+    ${sleepMain}
+    <button onclick="toggleSleepExpand()" style="background:none;border:none;color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;padding:0;margin-top:10px;display:flex;align-items:center;gap:5px">
+      Verlauf <span class="expand-arrow${wasOpen?' open':''}" id="sleep-expand-arrow">▾</span>
+    </button>
+    <div id="sleep-expand-body" style="display:${wasOpen?'block':'none'};margin-top:10px">
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="range-btn${sleepChartRange===7?' active':''}" onclick="setSleepRange(7)">7 Tage</button>
+        <button class="range-btn${sleepChartRange===30?' active':''}" onclick="setSleepRange(30)">30 Tage</button>
+        <button class="range-btn${sleepChartRange===365?' active':''}" onclick="setSleepRange(365)">1 Jahr</button>
+      </div>
+      <div id="sleep-chart-box"></div>
+    </div>`;
+  if(wasOpen) drawSleepChart();
+}
+function toggleSleepExpand(){
+  const body = document.getElementById('sleep-expand-body');
+  const arrow = document.getElementById('sleep-expand-arrow');
+  const open = body.style.display === 'block';
+  body.style.display = open ? 'none' : 'block';
+  arrow.classList.toggle('open', !open);
+  if(!open) drawSleepChart();
+}
+function setSleepRange(days){
+  sleepChartRange = days;
+  document.querySelectorAll('#sleep-expand-body .range-btn').forEach(b=> b.classList.toggle('active', b.textContent.trim().startsWith(String(days))));
+  drawSleepChart();
+}
+function drawSleepChart(){
+  const box = document.getElementById('sleep-chart-box');
+  if(!box) return;
+  const days = (state.garminDays || []).slice(0, sleepChartRange).slice().reverse();
+  if(!days.length){ box.innerHTML = '<div class="empty-state">Noch keine Daten.</div>'; return; }
+  const w = 560, h = 140, pad = 24;
+  const hoursOf = d => (d.sleepSeconds||0)/3600;
+  const maxH = Math.max(9, ...days.map(hoursOf));
+  const stepX = days.length>1 ? (w-pad*2)/(days.length-1) : 0;
+  const pts = days.map((d,i)=>{
+    const x = pad + i*stepX;
+    const y = h - pad - (hoursOf(d)/maxH)*(h-pad*2);
+    return {x, y, d};
+  });
+  const line = pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `M${pts[0].x.toFixed(1)},${h-pad} ` + pts.map(p=>`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ` L${pts[pts.length-1].x.toFixed(1)},${h-pad} Z`;
+  const dots = pts.map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="var(--accent)"></circle>`).join('');
+  const showEvery = Math.max(1, Math.ceil(pts.length/6));
+  const labels = pts.map((p,i)=> (i%showEvery===0 || i===pts.length-1) ? `<text x="${p.x.toFixed(1)}" y="${h-4}" font-size="9" fill="var(--muted)" text-anchor="middle">${formatDateShort(p.d.date)}</text>` : '').join('');
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:140px">
+      <path d="${areaPath}" fill="var(--accent-dim)" stroke="none"></path>
+      <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>
+      ${dots}${labels}
+    </svg>
+    <p style="font-size:11px;color:var(--muted2);margin-top:6px">${days.length} von ${sleepChartRange} Tagen gecacht — Verlauf füllt sich täglich weiter.</p>`;
+}
+async function syncGarmin(){
+  const btn = document.getElementById('sport-sync-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Synchronisiere…'; }
+  try{
+    const res = await fetch(API_BASE + '/garmin/refresh');
+    const data = await res.json();
+    if(!res.ok || !data.ok) throw new Error(data.message || 'Unbekannter Fehler');
+    showToast('Garmin aktualisiert');
+  }catch(e){
+    showToast('⚠️ Sync fehlgeschlagen – ' + e.message);
+  }
+  await loadState();
+}
+
+/* ── NEWS + MÄRKTE ── */
+let newsItems = [], marketQuotes = [], newsOpenIdx = null;
+async function loadExtras(){
+  try{
+    const [nRes, mRes] = await Promise.all([fetch(API_BASE + '/news'), fetch(API_BASE + '/markets')]);
+    newsItems = (await nRes.json()).items || [];
+    marketQuotes = (await mRes.json()).quotes || [];
+  }catch(e){
+    console.warn('News/Märkte nicht erreichbar.', e);
+  }
+  renderNews();
+  renderMarkets();
+}
+function toggleNews(i){
+  newsOpenIdx = newsOpenIdx === i ? null : i;
+  renderNews();
+}
+function renderNews(){
+  const el = document.getElementById('ov-news-body');
+  if(!el) return;
+  el.innerHTML = newsItems.length ? newsItems.map((n,i) => `
+    <div class="news-item ${newsOpenIdx===i?'open':''}">
+      <div class="news-head" onclick="toggleNews(${i})">
+        <span class="news-title">${escapeHtml(n.title)}</span>
+        ${n.time ? `<span class="news-time">${escapeHtml(n.time)}</span>` : ''}
+        <span class="news-chev">▾</span>
+      </div>
+      <div class="news-detail">
+        ${n.image ? `<img class="news-img" src="${escapeHtml(n.image)}" alt="" loading="lazy">` : ''}
+        <div class="news-text">${escapeHtml(n.text)}</div>
+        <a class="news-link" href="${escapeHtml(n.link)}" target="_blank" rel="noopener">Ganzen Artikel lesen →</a>
+      </div>
+    </div>`).join('') : '<div class="empty-state"><span class="ee-icon">📰</span>Gerade keine News abrufbar.</div>';
+}
+function fmtPrice(v){
+  return v == null ? '–' : v.toLocaleString('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1});
+}
+function sparkSvg(points, up){
+  if(!points || points.length < 2) return '<span style="width:76px"></span>';
+  const w = 76, h = 26, min = Math.min(...points), max = Math.max(...points), span = (max - min) || 1;
+  const pts = points.map((p,i) => `${(i/(points.length-1)*w).toFixed(1)},${(h-2-((p-min)/span)*(h-4)).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="flex-shrink:0"><polyline points="${pts}" fill="none" stroke="${up?'var(--success)':'var(--danger)'}" stroke-width="1.5"></polyline></svg>`;
+}
+function renderMarkets(){
+  const el = document.getElementById('ov-markets-body');
+  if(!el) return;
+  el.innerHTML = marketQuotes.length ? marketQuotes.map(q => {
+    const up = (q.changePct || 0) >= 0;
+    const chg = q.changePct == null ? '' : (up?'+':'') + q.changePct.toLocaleString('de-DE',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' %';
+    return `<div class="mkt-row">
+      <span class="mkt-name">${escapeHtml(q.name)}</span>
+      ${sparkSvg(q.spark, up)}
+      <span style="text-align:right">
+        <div class="mkt-price">${fmtPrice(q.price)}</div>
+        <div class="mkt-chg ${up?'up':'down'}">${chg}</div>
+      </span>
+    </div>`;
+  }).join('') : '<div class="empty-state"><span class="ee-icon">📈</span>Gerade keine Kurse abrufbar.</div>';
+}
+setInterval(loadExtras, 15*60*1000);
+
+/* ── ICLOUD-IMPORT ── */
+let icloudPending = [];
+async function checkIcloudPending(){
+  try{
+    const res = await fetch(API_BASE + '/icloud/pending');
+    const data = await res.json();
+    icloudPending = data.pending || [];
+  }catch(e){
+    icloudPending = [];
+  }
+  renderIcloudBanner();
+}
+function renderIcloudBanner(){
+  const banner = document.getElementById('cal-review-banner');
+  if(icloudPending.length){
+    banner.style.display = 'block';
+    document.getElementById('cal-review-text').textContent = `${icloudPending.length} ${icloudPending.length===1?'neuer Termin':'neue Termine'} aus iCloud gefunden`;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+function openIcloudModal(){
+  const list = document.getElementById('icloud-list');
+  list.innerHTML = icloudPending.map((ev,i) => {
+    const allDay = ev.time === '00:00' || !ev.time;
+    const range = ev.endDate ? formatDateShort(ev.date) + '–' + formatDateShort(ev.endDate) : formatDateShort(ev.date);
+    const dateLabel = range + (allDay ? (ev.endDate ? '' : ' · Ganztägig') : ' · ' + ev.time);
+    return `<label class="icloud-row">
+      <input type="checkbox" class="chk icloud-chk" data-i="${i}" checked>
+      <span class="ci-text">${escapeHtml(ev.title.trim())}</span>
+      <span class="ci-date">${dateLabel}</span>
+    </label>`;
+  }).join('') || '<div class="empty-state">Keine offenen Termine mehr.</div>';
+  document.getElementById('icloud-toggle-all').textContent = 'Alle abwählen';
+  updateIcloudConfirmBtn();
+  openOverlay('modal-icloud');
+}
+function updateIcloudConfirmBtn(){
+  const n = document.querySelectorAll('.icloud-chk:checked').length;
+  document.getElementById('icloud-confirm-btn').textContent = n ? `${n} Termin${n===1?'':'e'} übernehmen` : 'Übernehmen';
+}
+document.addEventListener('change', e=>{ if(e.target.classList.contains('icloud-chk')) updateIcloudConfirmBtn(); });
+function toggleAllIcloud(){
+  const boxes = document.querySelectorAll('.icloud-chk');
+  const allChecked = document.querySelectorAll('.icloud-chk:checked').length === boxes.length;
+  boxes.forEach(b=> b.checked = !allChecked);
+  document.getElementById('icloud-toggle-all').textContent = allChecked ? 'Alle auswählen' : 'Alle abwählen';
+  updateIcloudConfirmBtn();
+}
+function confirmIcloudImport(){
+  const checkedIdx = [...document.querySelectorAll('.icloud-chk:checked')].map(b=>+b.dataset.i);
+  let count = 0;
+  checkedIdx.forEach(i=>{
+    const ev = icloudPending[i];
+    if(!ev) return;
+    const allDay = ev.time === '00:00' || !ev.time;
+    state.events.push({
+      id:newId(), title:ev.title.trim(), date:ev.date, endDate: ev.endDate || null, time: allDay ? null : ev.time,
+      recurrence:'none', interval:1, priority:'small', category:'privat',
+      source:'icloud', icloudUid:ev.icloudUid, exceptions:[]
+    });
+    count++;
+  });
+  icloudPending = icloudPending.filter((_,i) => !checkedIdx.includes(i));
+  closeOverlay('modal-icloud');
+  update();
+  showToast(count ? `${count} Termin${count===1?'':'e'} übernommen` : 'Nichts übernommen');
+  renderIcloudBanner();
+}
+
+/* ── KI-ASSISTENT (Sprachmodus) ── */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let assistantRecognition = null;
+if(SpeechRec){
+  assistantRecognition = new SpeechRec();
+  assistantRecognition.lang = 'de-DE';
+  assistantRecognition.continuous = false;
+  assistantRecognition.interimResults = false;
+}
+let assistantBusy = false;
+
+function toggleAssistantPanel(){
+  document.getElementById('assistant-panel').classList.toggle('open');
+}
+
+function setOrbSpeed(a,b,c,nodeDur){
+  document.getElementById('orbit-a').style.animationDuration = a;
+  document.getElementById('orbit-b').style.animationDuration = b;
+  document.getElementById('orbit-c').style.animationDuration = c;
+  document.querySelectorAll('.orb-node').forEach(n => n.style.animationDuration = nodeDur);
+}
+function setOrbColor(model){
+  document.getElementById('assistant-panel').style.setProperty('--orb-color', model === 'claude' ? 'var(--claude)' : 'var(--accent)');
+}
+function orbIdle(afterFirst){
+  setOrbSpeed('16s','20s','26s','1.8s');
+  document.getElementById('orb-svg').style.opacity = '1';
+  document.getElementById('orb-ring1').style.display = 'none';
+  document.getElementById('orb-ring2').style.display = 'none';
+  document.getElementById('assistant-state-label').textContent = afterFirst ? 'tippen für die nächste Frage' : 'tippen zum Sprechen';
+}
+function orbListen(){
+  setOrbSpeed('8s','10s','13s','1.1s');
+  document.getElementById('orb-svg').style.opacity = '1';
+  document.getElementById('orb-ring1').style.display = 'block';
+  document.getElementById('orb-ring2').style.display = 'block';
+  document.getElementById('assistant-state-label').textContent = 'hört zu';
+}
+function orbThink(){
+  setOrbSpeed('70s','85s','100s','2.6s');
+  document.getElementById('orb-svg').style.opacity = '0.55';
+  document.getElementById('orb-ring1').style.display = 'none';
+  document.getElementById('orb-ring2').style.display = 'none';
+  document.getElementById('assistant-state-label').textContent = 'denkt nach';
+}
+function orbSpeak(model){
+  setOrbSpeed('3s','4s','5s','0.5s');
+  setOrbColor(model);
+  document.getElementById('orb-svg').style.opacity = '1';
+  document.getElementById('assistant-state-label').textContent = 'spricht';
+}
+
+function addAssistantLine(role, text, model, hasAction){
+  const el = document.getElementById('assistant-transcript');
+  const row = document.createElement('div');
+  if(role === 'user'){
+    row.innerHTML = `<div class="assistant-row-tag" style="color:var(--muted)">Du</div><div class="assistant-row-text" style="color:var(--text)">${escapeHtml(text)}</div>`;
+  } else {
+    const tagColor = model === 'claude' ? 'var(--claude)' : 'var(--accent2)';
+    const tagLabel = model === 'claude' ? 'Claude · Sonnet 5' : 'Gemini';
+    const check = hasAction ? '✓ ' : '';
+    row.innerHTML = `<div class="assistant-row-tag" style="color:${tagColor}">${tagLabel}</div><div class="assistant-row-text" style="color:var(--text)">${check}${escapeHtml(text)}</div>`;
+  }
+  row.style.cssText += 'opacity:0;transform:translateY(4px);transition:opacity .4s,transform .4s';
+  el.appendChild(row);
+  requestAnimationFrame(()=>{ row.style.opacity='1'; row.style.transform='translateY(0)'; });
+}
+
+function startAssistantTurn(){
+  if(assistantBusy) return;
+  if(!assistantRecognition){
+    showToast('Sprach-Erkennung wird von diesem Browser nicht unterstützt – Chrome empfehlenswert.');
+    return;
+  }
+  assistantBusy = true;
+  orbListen();
+  let gotResult = false;
+  assistantRecognition.onresult = function(e){
+    gotResult = true;
+    const transcript = e.results[0][0].transcript;
+    addAssistantLine('user', transcript);
+    orbThink();
+    fetch(API_BASE + '/assistant', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: transcript})
+    }).then(res => res.json()).then(data => {
+      if(data.error){
+        showToast('⚠️ ' + data.error);
+        assistantBusy = false;
+        orbIdle(false);
+        return;
+      }
+      orbSpeak(data.model);
+      addAssistantLine('assistant', data.reply, data.model, (data.actions||[]).length > 0);
+      loadState();
+      const utter = new SpeechSynthesisUtterance(data.reply);
+      utter.lang = 'de-DE';
+      utter.onend = function(){ assistantBusy = false; orbIdle(true); };
+      utter.onerror = function(){ assistantBusy = false; orbIdle(true); };
+      speechSynthesis.speak(utter);
+    }).catch(e => {
+      console.warn('Assistent nicht erreichbar.', e);
+      showToast('⚠️ Konnte den Assistenten nicht erreichen – läuft der Server noch?');
+      assistantBusy = false;
+      orbIdle(false);
+    });
+  };
+  assistantRecognition.onerror = function(e){
+    gotResult = true;
+    if(e.error !== 'no-speech' && e.error !== 'aborted'){
+      showToast(e.error === 'not-allowed' ? 'Mikrofon-Zugriff verweigert.' : 'Spracherkennung hat nicht geklappt, nochmal versuchen.');
+    }
+    assistantBusy = false;
+    orbIdle(false);
+  };
+  assistantRecognition.onend = function(){
+    if(!gotResult && assistantBusy){ assistantBusy = false; orbIdle(false); }
+  };
+  assistantRecognition.start();
+}
+
+function stopAssistantSpeaking(){
+  speechSynthesis.cancel();
+  if(assistantRecognition) assistantRecognition.stop();
+  assistantBusy = false;
+  orbIdle(false);
+}
+
+function renderVerlaufPage(){
+  const el = document.getElementById('verlauf-list');
+  const log = state.assistantLog || [];
+  el.innerHTML = log.length ? log.map(a => `
+    <div class="journal-entry">
+      <span class="je-date">${a.role==='user' ? 'Du' : 'KI'}</span>
+      <span class="je-note" style="white-space:normal;letter-spacing:normal;color:var(--text)">${escapeHtml(a.message)}</span>
+    </div>`).join('') : '<div class="empty-state">Noch keine Gespräche geführt – tipp auf die Kugel unten rechts.</div>';
+}
+
+/* ── 3D-TILT AUF KARTEN + NAV ── */
+function attachTilt(el, maxTiltDeg){
+  el.addEventListener('mousemove', function(e){
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    const rotateX = -py * maxTiltDeg * 2;
+    const rotateY = px * maxTiltDeg * 2;
+    el.style.transition = 'transform .15s ease-out';
+    el.style.transform = `perspective(700px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg)`;
+  });
+  el.addEventListener('mouseleave', function(){
+    el.style.transition = 'transform .6s cubic-bezier(.23,1,.32,1)';
+    el.style.transform = 'perspective(700px) rotateX(0deg) rotateY(0deg)';
+  });
+}
+function initTilt(){
+  if(initTilt._done) return;
+  initTilt._done = true;
+  // Kalender-Karte kippt nur minimal (−70 %), damit die Buttons oben links klickbar bleiben
+  document.querySelectorAll('.card').forEach(el => attachTilt(el, el.closest('#view-calendar') ? 1.8 : 6));
+  document.querySelectorAll('.nav-item').forEach(el => attachTilt(el, 9));
+}
+
+/* ── ALLES NEU RENDERN ── */
+function renderAll(){
+  renderOverviewDate();
+  renderReviewBanner();
+  renderSleepCard();
+  renderOverviewTraining();
+  renderOverviewTodos();
+  renderOverviewUpcoming();
+  renderJournalCard();
+  renderGoalsCard();
+  renderNews();
+  renderMarkets();
+  renderVerlaufPage();
+  renderTrainingPlanPage();
+  renderTodosPage();
+  if(document.getElementById('view-calendar').classList.contains('active')) renderCalendar();
+  if(document.getElementById('view-sport').classList.contains('active')) renderSportPage();
+}
+
+loadState();
+loadExtras();
+</script>
+</body>
+</html>
