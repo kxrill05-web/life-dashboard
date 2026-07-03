@@ -7,6 +7,7 @@ Endpunkte:
 
 Alles läuft lokal. Datenbank liegt als life_dashboard.db neben diesem Skript.
 """
+import base64
 import datetime
 import hashlib
 import hmac
@@ -57,6 +58,8 @@ def load_env():
 ENV = load_env()
 GEMINI_API_KEY = ENV.get("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = ENV.get("ANTHROPIC_API_KEY", "")
+ELEVENLABS_API_KEY = ENV.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = ENV.get("ELEVENLABS_VOICE_ID", "")
 GARMIN_EMAIL = ENV.get("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = ENV.get("GARMIN_PASSWORD", "")
 APPLE_ID_EMAIL = ENV.get("APPLE_ID_EMAIL", "")
@@ -993,6 +996,31 @@ def _gemini_request(system_prompt, contents):
     )
 
 
+def synthesize_speech_b64(text):
+    """Vertont die Antwort ueber ElevenLabs (realistische, menschlich klingende maennliche Stimme
+    statt der robotisch klingenden Browser-Stimmen). Best-Effort: fehlt der Key oder schlaegt der
+    Aufruf fehl, gibt es None zurueck — das Frontend faellt dann auf die Browser-Sprachausgabe zurueck."""
+    if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
+        return None
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        }).encode("utf-8"),
+        headers={"xi-api-key": ELEVENLABS_API_KEY, "content-type": "application/json", "accept": "audio/mpeg"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return base64.b64encode(resp.read()).decode("ascii")
+    except Exception as e:
+        print(f"[ElevenLabs] Sprachausgabe fehlgeschlagen, Browser-Fallback wird genutzt: {e}")
+        return None
+
+
 def call_claude(conn, system_prompt, user_message):
     messages = [{"role": "user", "content": user_message}]
     actions = []
@@ -1170,7 +1198,8 @@ class Handler(BaseHTTPRequestHandler):
                              ('id' + uuid.uuid4().hex[:12], now, 'user', message))
                 conn.execute("INSERT INTO assistant_log (id, ts, role, message) VALUES (?,?,?,?)",
                              ('id' + uuid.uuid4().hex[:12], now, 'assistant', result['reply']))
-            self._json(200, {"reply": result["reply"], "model": model, "actions": result["actions"]})
+            audio_b64 = synthesize_speech_b64(result["reply"])
+            self._json(200, {"reply": result["reply"], "model": model, "actions": result["actions"], "audioBase64": audio_b64})
         except Exception as e:
             print(f"[/assistant] Fehler: {e}")
             self._json(500, {"error": "Der KI-Anbieter hat gerade nicht geantwortet. Versuch's gleich nochmal."})

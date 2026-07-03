@@ -2260,10 +2260,33 @@ function startAssistantTurn(){
   } else if(assistantPhase === 'listening'){
     endConversation(true);
   } else if(assistantPhase === 'speaking'){
-    speechSynthesis.cancel();
+    stopCurrentSpeech();
     assistantListen();
   }
   // während 'thinking' macht ein Tipp nichts
+}
+
+/* Sprachausgabe: ElevenLabs (realistische Stimme, per audioBase64 vom Server) wenn vorhanden,
+   sonst Browser-Sprachausgabe als Fallback (kein Key gesetzt, oder ElevenLabs-Aufruf fehlgeschlagen). */
+let currentSpeechAudio = null;
+function stopCurrentSpeech(){
+  speechSynthesis.cancel();
+  if(currentSpeechAudio){ currentSpeechAudio.pause(); currentSpeechAudio = null; }
+}
+function speakReply(text, audioBase64, onEnd){
+  if(audioBase64){
+    const audio = new Audio('data:audio/mpeg;base64,' + audioBase64);
+    currentSpeechAudio = audio;
+    audio.onended = function(){ if(currentSpeechAudio===audio){ currentSpeechAudio=null; onEnd(); } };
+    audio.onerror = function(){ if(currentSpeechAudio===audio){ currentSpeechAudio=null; onEnd(); } };
+    audio.play().catch(()=>{ currentSpeechAudio=null; onEnd(); });
+    return;
+  }
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'de-DE';
+  utter.onend = onEnd;
+  utter.onerror = onEnd;
+  speechSynthesis.speak(utter);
 }
 
 function assistantListen(){
@@ -2289,12 +2312,10 @@ function assistantListen(){
       orbSpeak(data.model);
       addAssistantLine('assistant', data.reply, data.model, (data.actions||[]).length > 0);
       loadState();
-      const utter = new SpeechSynthesisUtterance(data.reply);
-      utter.lang = 'de-DE';
       // Nach dem Aussprechen automatisch wieder zuhören — wie ein echtes Gespräch
-      utter.onend = function(){ if(conversationOn && assistantPhase === 'speaking') assistantListen(); };
-      utter.onerror = function(){ if(conversationOn && assistantPhase === 'speaking') assistantListen(); };
-      speechSynthesis.speak(utter);
+      speakReply(data.reply, data.audioBase64, function(){
+        if(conversationOn && assistantPhase === 'speaking') assistantListen();
+      });
     }).catch(e => {
       console.warn('Assistent nicht erreichbar.', e);
       showToast('⚠️ Konnte den Assistenten nicht erreichen – läuft der Server noch?');
@@ -2323,7 +2344,7 @@ function endConversation(hadConversation){
 }
 
 function stopAssistantSpeaking(){
-  speechSynthesis.cancel();
+  stopCurrentSpeech();
   endConversation(false);
 }
 
