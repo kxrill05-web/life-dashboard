@@ -10,8 +10,8 @@ Alles läuft lokal. Datenbank liegt als life_dashboard.db neben diesem Skript.
 import datetime
 import html
 import json
+import os
 import re
-import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,9 +23,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import caldav
 import icalendar
 import garminconnect
+import psycopg2
+import psycopg2.extras
 
-PORT = 5006
-DB_PATH = Path(__file__).parent / "life_dashboard.db"
+PORT = int(os.environ.get("PORT", 5006))
 ENV_PATH = Path(__file__).parent / ".env"
 WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 GEMINI_MODEL = "gemini-3.5-flash"
@@ -39,7 +40,8 @@ MARKET_SYMBOLS = [("NASDAQ 100", "^NDX"), ("S&P 500", "^GSPC"), ("Gold", "GC=F")
 
 
 def load_env():
-    env = {}
+    """Auf Render kommen Secrets als echte Umgebungsvariablen (Dashboard) - lokal aus .env (gitignored)."""
+    env = dict(os.environ)
     if ENV_PATH.exists():
         for line in ENV_PATH.read_text().splitlines():
             line = line.strip()
@@ -57,16 +59,52 @@ GARMIN_EMAIL = ENV.get("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = ENV.get("GARMIN_PASSWORD", "")
 APPLE_ID_EMAIL = ENV.get("APPLE_ID_EMAIL", "")
 APPLE_APP_PASSWORD = ENV.get("APPLE_APP_PASSWORD", "")
+DATABASE_URL = ENV.get("DATABASE_URL", "")
+
+
+class _PGConn:
+    """Duennes Kompatibilitaets-Layer: gibt der bestehenden SQLite-Aufrufsyntax (conn.execute mit '?',
+    with-conn-Transaktionen, dict-artige Rows) eine Postgres-Verbindung darunter, ohne die 59 bestehenden
+    Aufrufstellen einzeln umschreiben zu muessen."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql.replace("?", "%s"), params)
+        return cur
+
+    def executescript(self, script):
+        cur = self._conn.cursor()
+        for stmt in script.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                cur.execute(stmt)
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self._conn.commit()
+        else:
+            self._conn.rollback()
+        return False
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _PGConn(psycopg2.connect(DATABASE_URL))
 
 
 def _ensure_column(conn, table, column, coldef):
-    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})")]
+    cur = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,))
+    cols = [r["column_name"] for r in cur]
     if column not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
 
@@ -149,7 +187,8 @@ def init_db():
     with conn:
         for day in WEEKDAYS:
             conn.execute(
-                "INSERT OR IGNORE INTO training_plan (weekday, session_type, description) VALUES (?, '', '')",
+                "INSERT INTO training_plan (weekday, session_type, description) VALUES (?, '', '') "
+                "ON CONFLICT (weekday) DO NOTHING",
                 (day,))
         _ensure_column(conn, "todos", "priority", "TEXT NOT NULL DEFAULT 'none'")
         _ensure_column(conn, "calendar_events", "category", "TEXT NOT NULL DEFAULT 'privat'")
@@ -1009,9 +1048,9 @@ def main():
     if GARMIN_EMAIL and GARMIN_PASSWORD:
         ok, msg = garmin_sync()
         print(f"[Garmin] {msg}" if ok else f"[Garmin] Sync beim Start fehlgeschlagen (nicht schlimm, laeuft mit Cache weiter): {msg}")
-    server = ThreadingHTTPServer(("localhost", PORT), Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Life Dashboard Server läuft auf http://localhost:{PORT}")
-    print(f"Datenbank: {DB_PATH}")
+    print(f"Datenbank: Postgres ({DATABASE_URL.split('@')[-1] if DATABASE_URL else 'nicht konfiguriert'})")
     print("Lass dieses Fenster offen, solange du das Dashboard benutzt. Beenden: Strg+C")
     try:
         server.serve_forever()

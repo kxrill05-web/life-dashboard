@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: life-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 server.py
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GARMIN_EMAIL
+        sync: false
+      - key: GARMIN_PASSWORD
+        sync: false
+      - key: APPLE_ID_EMAIL
+        sync: false
+      - key: APPLE_APP_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false

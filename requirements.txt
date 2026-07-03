@@ -1,0 +1,4 @@
+garminconnect==0.2.8
+caldav==2.2.6
+icalendar==6.3.2
+psycopg2-binary==2.9.12
