@@ -49,6 +49,13 @@ body{
   background:transparent;padding:20px 22px 0;display:flex;align-items:center;justify-content:center;
   position:sticky;top:0;z-index:100;
 }
+.refresh-btn{
+  position:absolute;right:22px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;
+  background:rgba(255,255,255,.05);border:1px solid var(--border2);color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease;font-family:inherit;
+}
+.refresh-btn:hover{background:rgba(255,255,255,.09);color:var(--text)}
+.refresh-btn.spinning svg{animation:spinCW .8s linear infinite}
 .topnav{
   display:flex;gap:3px;background:rgba(255,255,255,.05);border:1px solid var(--border2);
   padding:4px;border-radius:14px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);flex-wrap:wrap;justify-content:center;
@@ -381,6 +388,7 @@ body{
 /* ── RESPONSIVE ── */
 @media(max-width:720px){
   .topbar{padding:14px 12px 0}
+  .refresh-btn{right:10px;width:30px;height:30px}
   .content{padding:18px 12px 90px}
   .card-grid{grid-template-columns:1fr}
   .ov-grid{grid-template-columns:1fr;grid-template-areas:none}
@@ -454,6 +462,12 @@ body{
     <button class="nav-item" data-view="todos">To-Dos</button>
     <button class="nav-item" data-view="calendar">Kalender</button>
   </nav>
+  <button class="refresh-btn" id="refresh-btn" onclick="refreshAll()" title="Alles neu laden (Daten, News, Märkte)" aria-label="Alles neu laden">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+      <polyline points="21 3 21 9 15 9"></polyline>
+    </svg>
+  </button>
 </header>
 
 <main class="content">
@@ -894,6 +908,7 @@ function defaultState(){
 }
 let state = defaultState();
 async function loadState(){
+  let ok = true;
   try{
     const res = await apiFetch('/state');
     if(!res.ok) throw new Error('status ' + res.status);
@@ -902,11 +917,13 @@ async function loadState(){
     state = Object.assign(base, parsed, {trainingPlan: Object.assign(base.trainingPlan, parsed.trainingPlan||{})});
     if(!Array.isArray(state.categories) || !state.categories.length) state.categories = defaultCategories();
   }catch(e){
+    ok = false;
     console.warn('Server nicht erreichbar, starte mit leerem Zustand.', e);
     showToast('⚠️ Server nicht erreichbar – Launcher starten (Life Dashboard.command)');
   }
   renderAll();
   initTilt();
+  return ok;
 }
 // Saves laufen nacheinander (Warteschlange): zwei schnelle Änderungen hintereinander
 // dürfen sich nicht überholen, sonst kollidieren sie in der Datenbank und eine geht verloren.
@@ -1864,16 +1881,21 @@ async function syncGarmin(){
 
 /* ── NEWS + MÄRKTE ── */
 let newsItems = [], marketQuotes = [], newsOpenIdx = null;
-async function loadExtras(){
+async function loadExtras(force){
+  const suffix = force ? '?force=1' : '';
+  let ok = true;
   try{
-    const [nRes, mRes] = await Promise.all([apiFetch('/news'), apiFetch('/markets')]);
+    const [nRes, mRes] = await Promise.all([apiFetch('/news'+suffix), apiFetch('/markets'+suffix)]);
     newsItems = (await nRes.json()).items || [];
     marketQuotes = (await mRes.json()).quotes || [];
   }catch(e){
+    ok = false;
     console.warn('News/Märkte nicht erreichbar.', e);
+    if(force) showToast('⚠️ News/Märkte gerade nicht erreichbar');
   }
   renderNews();
   renderMarkets();
+  return ok;
 }
 function toggleNews(i){
   newsOpenIdx = newsOpenIdx === i ? null : i;
@@ -1921,7 +1943,19 @@ function renderMarkets(){
     </div>`;
   }).join('') : '<div class="empty-state"><span class="ee-icon">📈</span>Gerade keine Kurse abrufbar.</div>';
 }
-setInterval(loadExtras, 15*60*1000);
+setInterval(()=>loadExtras(false), 15*60*1000);
+
+/* ── MANUELLER KOMPLETT-REFRESH ── */
+async function refreshAll(){
+  const btn = document.getElementById('refresh-btn');
+  if(btn.classList.contains('spinning')) return;
+  btn.classList.add('spinning');
+  const [stateOk, extrasOk] = await Promise.all([loadState(), loadExtras(true)]);
+  btn.classList.remove('spinning');
+  // Bei einem Fehler steht schon eine konkrete Meldung als Toast (aus loadState/loadExtras) —
+  // hier nur bei vollem Erfolg bestätigen, sonst würde der echte Fehler überschrieben
+  if(stateOk && extrasOk) showToast('✓ Aktualisiert');
+}
 
 /* ── ICLOUD-IMPORT ── */
 let icloudPending = [];

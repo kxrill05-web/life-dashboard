@@ -610,9 +610,9 @@ def fetch_markets():
     return quotes
 
 
-def cached_external(conn, key, ttl, fetcher):
+def cached_external(conn, key, ttl, fetcher, force=False):
     payload, fresh = _cache_get(conn, key, ttl)
-    if fresh:
+    if fresh and not force:
         return payload
     try:
         payload = fetcher()
@@ -1002,7 +1002,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authed():
             self._json(401, {"error": "nicht angemeldet"})
             return
-        if self.path == "/state":
+        split = urllib.parse.urlsplit(self.path)
+        path = split.path
+        qs = urllib.parse.parse_qs(split.query)
+        force = qs.get("force", ["0"])[0] == "1"
+        if path == "/state":
             try:
                 conn = get_db()
                 garmin_sync_if_stale(conn)
@@ -1011,7 +1015,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"[/state GET] Fehler: {e}")
                 self._json(500, {"error": "konnte nicht laden", "detail": str(e)})
-        elif self.path == "/icloud/pending":
+        elif path == "/icloud/pending":
             conn = get_db()
             try:
                 self._json(200, {"pending": caldav_pending_events(conn)})
@@ -1020,19 +1024,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"pending": [], "error": str(e)})
             finally:
                 conn.close()
-        elif self.path == "/garmin/refresh":
+        elif path == "/garmin/refresh":
             ok, msg = garmin_sync()
             self._json(200 if ok else 500, {"ok": ok, "message": msg})
-        elif self.path == "/news":
+        elif path == "/news":
             conn = get_db()
             try:
-                self._json(200, {"items": cached_external(conn, "news_cache", NEWS_CACHE_TTL, fetch_news)})
+                self._json(200, {"items": cached_external(conn, "news_cache", NEWS_CACHE_TTL, fetch_news, force=force)})
             finally:
                 conn.close()
-        elif self.path == "/markets":
+        elif path == "/markets":
             conn = get_db()
             try:
-                self._json(200, {"quotes": cached_external(conn, "markets_cache", MARKETS_CACHE_TTL, fetch_markets)})
+                self._json(200, {"quotes": cached_external(conn, "markets_cache", MARKETS_CACHE_TTL, fetch_markets, force=force)})
             finally:
                 conn.close()
         else:
