@@ -1,0 +1,54 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Life Dashboard App-Icon</title>
+<desc>Quadratisches App-Icon mit randlos gefuelltem dunklem Verlaufshintergrund und einer leuchtenden Kugel mit zwei Umlaufbahnen im Indigo-Farbton des Dashboards.</desc>
+<defs>
+  <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#14121f"/>
+    <stop offset="55%" stop-color="#0a0912"/>
+    <stop offset="100%" stop-color="#050409"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="50%" cy="45%" r="46%">
+    <stop offset="0%" stop-color="#6c63ff" stop-opacity="0.60"/>
+    <stop offset="60%" stop-color="#6c63ff" stop-opacity="0.13"/>
+    <stop offset="100%" stop-color="#6c63ff" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="orb" cx="42%" cy="37%" r="66%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="26%" stop-color="#cdc7ff"/>
+    <stop offset="60%" stop-color="#8b7bff"/>
+    <stop offset="100%" stop-color="#4a3fd4"/>
+  </radialGradient>
+  <radialGradient id="dotglow" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#e4e0ff" stop-opacity="0.9"/>
+    <stop offset="45%" stop-color="#8b7bff" stop-opacity="0.35"/>
+    <stop offset="100%" stop-color="#8b7bff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="ring1" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+    <stop offset="50%" stop-color="#cdc7ff" stop-opacity="0.85"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="ring2" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+    <stop offset="50%" stop-color="#8b7bff" stop-opacity="0.7"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+</defs>
+
+<!-- randlos: fuellt das ganze Quadrat, keine durchsichtigen (weissen) Ecken -->
+<rect x="0" y="0" width="512" height="512" fill="url(#bg)"/>
+<circle cx="256" cy="232" r="215" fill="url(#glow)"/>
+
+<g transform="translate(256,244)">
+  <ellipse cx="0" cy="0" rx="205" ry="70" fill="none" stroke="url(#ring1)" stroke-width="6" transform="rotate(-18)"/>
+  <ellipse cx="0" cy="0" rx="168" ry="168" fill="none" stroke="url(#ring2)" stroke-width="5" transform="rotate(32)"/>
+
+  <circle cx="163" cy="-12" r="26" fill="url(#dotglow)"/>
+  <circle cx="163" cy="-12" r="6" fill="#ffffff"/>
+  <circle cx="-131" cy="96" r="22" fill="url(#dotglow)"/>
+  <circle cx="-131" cy="96" r="5" fill="#e4e0ff"/>
+
+  <circle cx="0" cy="0" r="120" fill="url(#glow)"/>
+  <circle cx="0" cy="0" r="84" fill="url(#orb)"/>
+</g>
+</svg>
