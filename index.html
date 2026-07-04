@@ -284,6 +284,17 @@ body{
 .cal-dots{display:flex;gap:3px;min-height:6px;align-items:center}
 .cal-dots .cat-dot{width:6px;height:6px}
 .cal-more{font-size:9px;color:var(--muted2);line-height:1}
+.cal-expand-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:250}
+.cal-expand-backdrop.show{display:block}
+.card.cal-expanded{position:fixed;inset:26px;z-index:260;margin:0;max-width:none;width:auto;display:flex;flex-direction:column;overflow:auto;box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.card.cal-expanded .cal-grid{flex:1;min-height:0}
+.card.cal-expanded .cal-day{min-height:0;height:100%;align-items:stretch;justify-content:flex-start;text-align:left;padding:6px 7px 8px;gap:4px}
+.card.cal-expanded .cal-day-num{align-self:flex-start;font-size:13px}
+.cal-day-events{display:flex;flex-direction:column;gap:2px;width:100%;overflow:hidden}
+.cal-day-ev{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);border-radius:5px;padding:2px 6px;font-size:11px;line-height:1.5;cursor:pointer;overflow:hidden;white-space:nowrap}
+.cal-day-ev:hover{background:rgba(255,255,255,.13)}
+.cal-day-ev span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-day-more{font-size:10px;color:var(--muted2);padding-left:6px}
 .cal-week-row{display:flex;gap:10px;padding:9px 2px;border-top:1px solid var(--border);align-items:flex-start}
 .cal-week-row:first-child{border-top:none}
 .cwr-day{width:52px;flex-shrink:0;font-size:11.5px;color:var(--muted2);font-weight:600;padding-top:4px}
@@ -409,6 +420,9 @@ body{
   .cal-day{min-height:52px;gap:4px}
   .cal-day-num{font-size:11.5px}
   .cal-dow{font-size:8.5px}
+  #cal-expand-btn{display:none}
+  .cal-expand-backdrop{display:none!important}
+  .card.cal-expanded{position:static;inset:auto;z-index:auto;overflow:visible;box-shadow:none}
   .cwr-day{width:44px}
   .plan-weekday{width:76px}
   .assistant-panel{width:calc(100vw - 44px)}
@@ -647,13 +661,15 @@ body{
   <!-- ═══════════ KALENDER ═══════════ -->
   <section id="view-calendar" class="view">
 
-    <div class="card" style="margin-top:18px">
+    <div class="cal-expand-backdrop" id="cal-expand-backdrop" onclick="toggleCalBig()"></div>
+    <div class="card" style="margin-top:18px" id="cal-card">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <div class="cal-switch" style="flex:1;margin-bottom:0">
           <button class="cal-sw-btn active" data-cv="month" onclick="setCalView('month')">Monat</button>
           <button class="cal-sw-btn" data-cv="week" onclick="setCalView('week')">Woche</button>
           <button class="cal-sw-btn" data-cv="day" onclick="setCalView('day')">Tag</button>
         </div>
+        <button id="cal-expand-btn" class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="toggleCalBig()" title="Kalender vergrößern">⛶</button>
         <button id="cal-icloud-btn" class="btn btn-ghost btn-sm" style="display:none;flex-shrink:0" onclick="openIcloudModal()" title="Neue Termine aus iCloud übernehmen">📥</button>
       </div>
       <div class="cal-toolbar">
@@ -1558,6 +1574,7 @@ function hexToRgba(hex, a){
 let calView = localStorage.getItem('ld_calview') || 'month';
 if(!['month','week','day'].includes(calView)) calView = 'month';
 let calCursor = new Date(); calCursor.setHours(12,0,0,0);
+let calBig = localStorage.getItem('ld_calbig') === '1';
 function dateToStr(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
 function setCalView(v, cursorDate){
   calView = v;
@@ -1565,6 +1582,12 @@ function setCalView(v, cursorDate){
   if(cursorDate) calCursor = cursorDate;
   renderCalendar();
 }
+function toggleCalBig(){
+  calBig = !calBig;
+  localStorage.setItem('ld_calbig', calBig ? '1' : '0');
+  renderCalendar();
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && calBig) toggleCalBig(); });
 function calShift(delta){
   if(calView==='month'){ calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()+delta, 1, 12); }
   else if(calView==='week'){ calCursor = new Date(calCursor.getTime() + delta*7*86400000); }
@@ -1588,6 +1611,11 @@ function sortedOccurrences(dateStr){
 
 function renderCalendar(){
   document.querySelectorAll('.cal-sw-btn').forEach(b=>b.classList.toggle('active', b.dataset.cv===calView));
+  document.getElementById('cal-card').classList.toggle('cal-expanded', calBig);
+  document.getElementById('cal-expand-backdrop').classList.toggle('show', calBig);
+  const expBtn = document.getElementById('cal-expand-btn');
+  expBtn.textContent = calBig ? '✕' : '⛶';
+  expBtn.title = calBig ? 'Kalender verkleinern' : 'Kalender vergrößern';
   const grid = document.getElementById('cal-grid');
   const list = document.getElementById('cal-list');
   if(calView==='month'){ grid.style.display='grid'; list.innerHTML=''; renderCalMonth(grid); }
@@ -1606,14 +1634,27 @@ function renderCalMonth(grid){
   for(let day=1; day<=daysInMonth; day++){
     const dateStr = `${y}-${pad2(m+1)}-${pad2(day)}`;
     const occ = getOccurrencesOn(dateStr);
-    const shown = occ.slice(0,4);
-    let dots = shown.map(ev=>`<span class="cat-dot" style="background:${catColor(ev.category)}"></span>`).join('');
-    if(occ.length>4) dots += `<span class="cal-more">+${occ.length-4}</span>`;
+    let body;
+    if(calBig){
+      const shownBig = occ.slice(0,4);
+      body = `<div class="cal-day-events">${shownBig.map(ev=>calMonthEvHtml(ev,dateStr)).join('')}${occ.length>4?`<div class="cal-day-more">+${occ.length-4} mehr</div>`:''}</div>`;
+    } else {
+      const shown = occ.slice(0,4);
+      let dots = shown.map(ev=>`<span class="cat-dot" style="background:${catColor(ev.category)}"></span>`).join('');
+      if(occ.length>4) dots += `<span class="cal-more">+${occ.length-4}</span>`;
+      body = `<div class="cal-dots">${dots}</div>`;
+    }
     cells += `<div class="cal-day ${dateStr===todayS?'today':''}" onclick="calOpenDay('${dateStr}')">
-      <div class="cal-day-num">${day}</div><div class="cal-dots">${dots}</div>
+      <div class="cal-day-num">${day}</div>${body}
     </div>`;
   }
   grid.innerHTML = cells;
+  grid.style.gridTemplateRows = calBig ? `auto repeat(${Math.ceil((startOffset+daysInMonth)/7)}, 1fr)` : '';
+}
+function calMonthEvHtml(ev, dateStr){
+  return `<div class="cal-day-ev" onclick="event.stopPropagation();openEventEditor('${ev.id}','${dateStr}')">
+    <span class="cat-dot" style="background:${catColor(ev.category)}"></span><span>${escapeHtml(ev.title)}</span>
+  </div>`;
 }
 
 function renderCalList(list){
