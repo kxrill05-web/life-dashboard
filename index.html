@@ -797,9 +797,15 @@ body{
       <label>An welchen Tagen?</label>
       <div class="train-picker" id="todo-repeat-weekdays-toggle"></div>
     </div>
-    <div class="field" id="todo-repeat-interval-field" style="display:none">
-      <label>Alle wie viele Tage?</label>
-      <input type="number" id="todo-repeat-interval" min="1" value="2">
+    <div class="field-row" id="todo-repeat-interval-field" style="display:none">
+      <div class="field">
+        <label>Ab welchem Tag?</label>
+        <input type="date" id="todo-repeat-start">
+      </div>
+      <div class="field">
+        <label>Alle wie viele Tage?</label>
+        <input type="number" id="todo-repeat-interval" min="1" value="2">
+      </div>
     </div>
     <div class="modal-sub" id="todo-repeat-hint" style="margin-bottom:0"></div>
     <div class="modal-footer">
@@ -994,6 +1000,10 @@ function formatDateShort(dateStr){
   const d = new Date(dateStr+'T00:00:00');
   return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'});
 }
+function formatDateWithDay(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  return d.toLocaleDateString('de-DE', {weekday:'short'}) + ' ' + formatDateShort(dateStr);
+}
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1113,6 +1123,7 @@ function openTodoRepeatEditor(id){
   currentTodoRepeatType = t.repeatType || 'none';
   currentTodoRepeatWeekdays = (t.repeatWeekdays || []).slice();
   document.getElementById('todo-repeat-interval').value = t.repeatInterval || 2;
+  document.getElementById('todo-repeat-start').value = t.repeatType==='interval_days' ? t.date : todayStr();
   renderTodoRepeatWeekdayPills();
   setTodoRepeatType(currentTodoRepeatType);
   openOverlay('modal-todo-repeat');
@@ -1132,14 +1143,13 @@ function setTodoRepeatType(type){
   currentTodoRepeatType = type;
   document.querySelectorAll('#todo-repeat-type-toggle .trp-opt').forEach(el => el.classList.toggle('selected', el.dataset.r===type));
   document.getElementById('todo-repeat-weekdays-field').style.display = type==='weekly_days' ? 'block' : 'none';
-  document.getElementById('todo-repeat-interval-field').style.display = type==='interval_days' ? 'block' : 'none';
+  document.getElementById('todo-repeat-interval-field').style.display = type==='interval_days' ? 'flex' : 'none';
   updateTodoRepeatHint();
 }
 function updateTodoRepeatHint(){
   const hint = document.getElementById('todo-repeat-hint');
   const t = state.todos.find(x=>x.id===editingTodoRepeatId);
   if(!t || currentTodoRepeatType==='none'){ hint.textContent = ''; return; }
-  const interval = parseInt(document.getElementById('todo-repeat-interval').value, 10) || 2;
   if(currentTodoRepeatType==='weekly_days'){
     if(!currentTodoRepeatWeekdays.length){ hint.textContent = 'Wähl mindestens einen Wochentag.'; return; }
     const today = todayStr();
@@ -1147,10 +1157,19 @@ function updateTodoRepeatHint(){
     hint.textContent = 'Erscheint am ' + formatDateShort(firstWeeklyDate(anchor, currentTodoRepeatWeekdays)) + ', dann an jedem gewählten Wochentag.';
     return;
   }
-  const next = computeNextRepeatDate(t.date, currentTodoRepeatType, currentTodoRepeatWeekdays, interval);
+  if(currentTodoRepeatType==='interval_days'){
+    const interval = Math.max(1, parseInt(document.getElementById('todo-repeat-interval').value, 10) || 2);
+    const start = document.getElementById('todo-repeat-start').value || todayStr();
+    const d2 = computeNextRepeatDate(start, 'interval_days', null, interval);
+    const d3 = computeNextRepeatDate(d2, 'interval_days', null, interval);
+    hint.textContent = 'Start ' + formatDateWithDay(start) + ', dann alle ' + interval + ' Tage: ' + formatDateWithDay(d2) + ', ' + formatDateWithDay(d3) + ' …';
+    return;
+  }
+  const next = computeNextRepeatDate(t.date, currentTodoRepeatType, currentTodoRepeatWeekdays, null);
   hint.textContent = next ? ('Nächstes Mal automatisch: ' + formatDateShort(next)) : '';
 }
 document.getElementById('todo-repeat-interval').addEventListener('input', updateTodoRepeatHint);
+document.getElementById('todo-repeat-start').addEventListener('input', updateTodoRepeatHint);
 function saveTodoRepeatForm(){
   const t = state.todos.find(x=>x.id===editingTodoRepeatId);
   if(!t) return;
@@ -1168,6 +1187,11 @@ function saveTodoRepeatForm(){
     const anchor = t.date < today ? today : t.date;
     const aligned = firstWeeklyDate(anchor, t.repeatWeekdays);
     if(aligned !== t.date){ t.date = aligned; movedMsg = ' — erscheint am ' + formatDateShort(aligned); }
+  } else if(t.repeatType==='interval_days'){
+    // Ab-welchem-Tag ist hier eine bewusste Nutzereingabe (nicht laenger implizit vom
+    // Anlegedatum abgeleitet) und wird als Ankerdatum fuer die Alle-X-Tage-Kette uebernommen.
+    t.date = document.getElementById('todo-repeat-start').value || todayStr();
+    movedMsg = ' — startet am ' + formatDateShort(t.date);
   }
   update();
   closeOverlay('modal-todo-repeat');
@@ -1183,10 +1207,13 @@ function repeatBadgeLabel(t){
 }
 function renderTodoListItem(t, opts){
   opts = opts || {};
-  const dateBadge = opts.showDate ? `<input type="date" class="ci-date" value="${t.date}" onchange="moveTodoDate('${t.id}', this.value)">` : '';
   const prio = t.priority || 'none';
   const prioLabel = {none:'keine', small:'klein', big:'groß'}[prio];
   const repeatActive = t.repeatType && t.repeatType!=='none';
+  // Bei aktiver Wiederholung ist das Datum nur eine interne Merkgroesse fuer die naechste
+  // Instanz, keine sinnvolle Nutzereingabe (Kirill: "Datum ist komplett scheissegal, wichtig
+  // ist nur der Wochentag/Rhythmus") -> dann NICHT anzeigen, nur den Wiederholungs-Badge.
+  const dateBadge = (opts.showDate && !repeatActive) ? `<input type="date" class="ci-date" value="${t.date}" onchange="moveTodoDate('${t.id}', this.value)">` : '';
   return `<li class="check-item ${t.done?'done':''}">
     <input type="checkbox" class="chk" ${t.done?'checked':''} onchange="toggleTodo('${t.id}')">
     <span class="ci-text">${escapeHtml(t.text)}</span>
