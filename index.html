@@ -1045,6 +1045,18 @@ function computeNextRepeatDate(fromStr, type, weekdays, interval){
   }
   return null;
 }
+/* Erstes Datum >= fromStr, dessen Wochentag in weekdays liegt (heute selbst zaehlt mit).
+   Damit landet ein To-Do mit festen Wochentagen sofort auf dem naechsten passenden Tag,
+   statt am Erstellungstag zu haengen wenn der kein gewaehlter Wochentag ist. */
+function firstWeeklyDate(fromStr, weekdays){
+  if(!weekdays || !weekdays.length) return fromStr;
+  const from = new Date(fromStr+'T00:00:00');
+  for(let i=0; i<7; i++){
+    const cand = new Date(from); cand.setDate(from.getDate()+i);
+    if(weekdays.includes(WEEKDAYS[(cand.getDay()+6)%7])) return todayStr(cand);
+  }
+  return fromStr;
+}
 function toggleTodo(id){
   const t = state.todos.find(x=>x.id===id);
   if(!t) return;
@@ -1126,8 +1138,15 @@ function updateTodoRepeatHint(){
   const t = state.todos.find(x=>x.id===editingTodoRepeatId);
   if(!t || currentTodoRepeatType==='none'){ hint.textContent = ''; return; }
   const interval = parseInt(document.getElementById('todo-repeat-interval').value, 10) || 2;
+  if(currentTodoRepeatType==='weekly_days'){
+    if(!currentTodoRepeatWeekdays.length){ hint.textContent = 'Wähl mindestens einen Wochentag.'; return; }
+    const today = todayStr();
+    const anchor = t.date < today ? today : t.date;
+    hint.textContent = 'Erscheint am ' + formatDateShort(firstWeeklyDate(anchor, currentTodoRepeatWeekdays)) + ', dann an jedem gewählten Wochentag.';
+    return;
+  }
   const next = computeNextRepeatDate(t.date, currentTodoRepeatType, currentTodoRepeatWeekdays, interval);
-  hint.textContent = next ? ('Nächstes Mal automatisch: ' + formatDateShort(next)) : 'Wähl mindestens einen Wochentag.';
+  hint.textContent = next ? ('Nächstes Mal automatisch: ' + formatDateShort(next)) : '';
 }
 document.getElementById('todo-repeat-interval').addEventListener('input', updateTodoRepeatHint);
 function saveTodoRepeatForm(){
@@ -1139,9 +1158,18 @@ function saveTodoRepeatForm(){
   t.repeatType = currentTodoRepeatType;
   t.repeatWeekdays = currentTodoRepeatType==='weekly_days' ? currentTodoRepeatWeekdays.slice() : [];
   t.repeatInterval = currentTodoRepeatType==='interval_days' ? Math.max(1, parseInt(document.getElementById('todo-repeat-interval').value,10)||2) : null;
+  // Feste Wochentage: Datum auf den naechsten passenden Tag ziehen (ab heute, nie rueckwaerts),
+  // damit das To-Do nicht am Erstellungstag erscheint, wenn der kein gewaehlter Wochentag ist.
+  let movedMsg = '';
+  if(t.repeatType==='weekly_days'){
+    const today = todayStr();
+    const anchor = t.date < today ? today : t.date;
+    const aligned = firstWeeklyDate(anchor, t.repeatWeekdays);
+    if(aligned !== t.date){ t.date = aligned; movedMsg = ' — erscheint am ' + formatDateShort(aligned); }
+  }
   update();
   closeOverlay('modal-todo-repeat');
-  showToast('Wiederholung gespeichert');
+  showToast('Wiederholung gespeichert' + movedMsg);
 }
 
 function repeatBadgeLabel(t){
