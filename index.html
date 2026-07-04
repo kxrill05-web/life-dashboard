@@ -88,13 +88,16 @@ body{
   grid-template-areas:"news news todos todos" "train train markets markets" "sleep sleep journal journal" "upcoming upcoming upcoming upcoming";
 }
 .ov-grid .card{margin-bottom:0}
-.news-card{grid-area:news}
+/* news/todos und journal/sleep sitzen je in derselben Grid-Zeile. News und Tagebuch aendern
+   ihre Hoehe stark beim Auf-/Zuklappen — ohne align-self:start wuerde das den ruhigen Partner
+   (Todos/Schlaf) per Grid-Stretch mitziehen und unten leeren Platz aufreissen. */
+.news-card{grid-area:news;align-self:start}
 .markets-card{grid-area:markets}
 .sleep-card{grid-area:sleep}
 .train-card{grid-area:train;display:flex;flex-direction:column}
 .train-card #ov-training-body{display:flex;flex-direction:column;flex:1}
-.journal-card{grid-area:journal}
-.todos-card{grid-area:todos}
+.journal-card{grid-area:journal;align-self:start}
+.todos-card{grid-area:todos;align-self:start}
 .upcoming-card{grid-area:upcoming}
 .upcoming-card #ov-upcoming-body{display:flex;flex-wrap:wrap;gap:4px 22px}
 .upcoming-card .up-item{border-top:none;padding:3px 0}
@@ -190,8 +193,8 @@ body{
 .news-item.open .news-chev{transform:rotate(180deg)}
 .news-detail{display:none;padding:2px 2px 12px}
 .news-item.open .news-detail{display:block;animation:pageIn .3s ease}
-.news-img{width:100%;max-height:150px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:1px solid var(--border)}
-.news-text{font-size:12px;color:var(--muted);line-height:1.6}
+.news-img{width:100%;max-height:210px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:1px solid var(--border)}
+.news-text{font-size:12.5px;color:var(--muted);line-height:1.65}
 .news-link{display:inline-block;font-size:11px;color:var(--accent2);margin-top:6px;text-decoration:none}
 .news-link:hover{text-decoration:underline}
 
@@ -208,6 +211,9 @@ body{
 .supp-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:6px;background:var(--accent-dim);margin-bottom:4px}
 .supp-row.done .ci-text{text-decoration:line-through;color:var(--muted2)}
 .supp-badge{font-size:9.5px;background:rgba(139,123,255,.16);color:var(--accent2);border-radius:8px;padding:2px 7px;margin-left:auto;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+
+/* ── PRODUKTIVITÄTS-HINWEIS (kein echtes To-Do, nur eine Erinnerung) ── */
+.todo-nudge{font-size:11.5px;color:var(--muted2);padding:9px 6px 2px;margin-top:4px;border-top:1px solid var(--border);font-style:italic}
 
 /* ── UPCOMING LIST ── */
 .up-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)}
@@ -584,17 +590,13 @@ body{
     <div class="page-sub">Schlaf, Puls und Training aus Garmin Connect</div>
 
     <div class="card-grid">
-      <div class="card">
+      <div class="card" style="align-self:start">
         <div class="card-head"><h3>Garmin-Verbindung</h3></div>
         <div id="sport-conn-body"></div>
       </div>
       <div class="card">
         <div class="card-head"><h3>Letzte Trainings</h3><span class="card-tag">Garmin</span></div>
         <div id="sport-acts-body"></div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3>Puls-Verlauf</h3></div>
-        <div class="empty-state"><span class="ee-icon">❤️</span>Noch keine Daten.</div>
       </div>
       <div class="card">
         <div class="card-head"><h3>Schlaf-Verlauf (inkl. REM/Tief/Leicht)</h3></div>
@@ -605,12 +607,8 @@ body{
         <div id="sport-hr-body"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h3>Fitness-Level</h3><span class="card-tag">Garmin</span></div>
-        <div id="sport-fitness-body"></div>
-      </div>
-      <div class="card">
         <div class="card-head"><h3>Optimierungsvorschläge</h3></div>
-        <div class="empty-state"><span class="ee-icon">💡</span>Noch keine Daten.</div>
+        <div id="sport-opt-body"></div>
       </div>
     </div>
   </section>
@@ -647,18 +645,14 @@ body{
   <!-- ═══════════ KALENDER ═══════════ -->
   <section id="view-calendar" class="view">
 
-    <div id="cal-review-banner" class="review-banner" style="display:none;margin-top:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span id="cal-review-text"></span>
-        <button class="btn btn-accent btn-sm" onclick="openIcloudModal()">Anzeigen</button>
-      </div>
-    </div>
-
     <div class="card" style="margin-top:18px">
-      <div class="cal-switch">
-        <button class="cal-sw-btn active" data-cv="month" onclick="setCalView('month')">Monat</button>
-        <button class="cal-sw-btn" data-cv="week" onclick="setCalView('week')">Woche</button>
-        <button class="cal-sw-btn" data-cv="day" onclick="setCalView('day')">Tag</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div class="cal-switch" style="flex:1;margin-bottom:0">
+          <button class="cal-sw-btn active" data-cv="month" onclick="setCalView('month')">Monat</button>
+          <button class="cal-sw-btn" data-cv="week" onclick="setCalView('week')">Woche</button>
+          <button class="cal-sw-btn" data-cv="day" onclick="setCalView('day')">Tag</button>
+        </div>
+        <button id="cal-icloud-btn" class="btn btn-ghost btn-sm" style="display:none;flex-shrink:0" onclick="openIcloudModal()" title="Neue Termine aus iCloud übernehmen">📥</button>
       </div>
       <div class="cal-toolbar">
         <div class="cal-nav">
@@ -1184,6 +1178,20 @@ function toggleSupplements(checked){
   s.done = checked;
   update();
 }
+/* Kein echtes To-Do, nur eine dezente, taeglich wechselnde Erinnerung an Dinge, die Kirill
+   sich vorgenommen hat (Backtesten, KI-Business/Claude, Lesen) — damit er dranbleibt. */
+const PRODUCTIVITY_NUDGES = [
+  '📈 Vielleicht heute ein Setup backtesten?',
+  '🤖 Vielleicht etwas Zeit fürs KI-Business mit Claude?',
+  '📖 Vielleicht heute mal ein bisschen lesen?',
+  '🎯 Kurz einen Blick auf deine Ziele werfen (Tagebuch → Ziele)?',
+  '📊 Alte Trades reviewen – was lief gut, was nicht?',
+];
+function todayNudge(){
+  const d = new Date();
+  const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
+  return PRODUCTIVITY_NUDGES[dayOfYear % PRODUCTIVITY_NUDGES.length];
+}
 function renderOverviewTodos(){
   const today = todayStr();
   const list = state.todos.filter(t=>t.date===today).sort((a,b)=> a.done - b.done);
@@ -1195,7 +1203,8 @@ function renderOverviewTodos(){
     <span class="supp-badge">täglich</span>
   </li>`;
   el.innerHTML = suppRow + (list.length ? list.map(t=>renderTodoListItem(t,{showDate:false})).join('') :
-    '<div class="empty-state" style="padding:14px 4px">Keine weiteren To-Dos für heute.</div>');
+    '<div class="empty-state" style="padding:14px 4px">Keine weiteren To-Dos für heute.</div>')
+    + `<li class="todo-nudge">${todayNudge()}</li>`;
 }
 function renderTodosPage(){
   const sorted = [...state.todos].sort((a,b)=> a.date.localeCompare(b.date) || (a.done - b.done));
@@ -1902,18 +1911,51 @@ function renderActivities(){
     </div>`;
   }).join('') : '<div class="empty-state"><span class="ee-icon">🏋️</span>Noch keine Trainings von der Uhr übertragen – nach dem nächsten Sync tauchen sie hier auf.</div>';
 }
-function renderFitness(){
-  const el = document.getElementById('sport-fitness-body');
+/* Regelbasierte Optimierungsvorschläge aus Schlaf/Ruhepuls/Trainingslog — bewusst einfache,
+   nachvollziehbare Schwellenwerte statt einer Blackbox, damit klar bleibt worauf sie beruhen. */
+function renderOptimizationTips(){
+  const el = document.getElementById('sport-opt-body');
   if(!el) return;
-  const fm = state.fitnessMetrics;
-  if(!fm || fm.vo2max == null){
-    el.innerHTML = '<div class="empty-state"><span class="ee-icon">🫀</span>Noch keine VO2max-Daten – kommt mit dem nächsten GPS-Lauf.</div>';
-    return;
+  const days = state.garminDays || [];
+  const tips = [];
+
+  const sleepDays = days.filter(d => d.sleepSeconds != null).slice(0, 7);
+  if(sleepDays.length){
+    const avgH = sleepDays.reduce((s,d)=> s + d.sleepSeconds, 0) / sleepDays.length / 3600;
+    const avgLabel = avgH.toLocaleString('de-DE', {maximumFractionDigits:1});
+    if(avgH < 6.5) tips.push(`😴 Ø ${avgLabel} h Schlaf die letzten ${sleepDays.length} Nächte – das ist wenig. Versuch heute auf 7–9 h zu kommen.`);
+    else if(avgH < 7) tips.push(`😴 Ø ${avgLabel} h Schlaf – knapp drunter. Heute mal eine halbe Stunde früher ins Bett.`);
+    else tips.push(`😴 Ø ${avgLabel} h Schlaf die letzten ${sleepDays.length} Nächte – solide, dabei bleiben.`);
   }
-  el.innerHTML = `
-    <div class="sport-stat">${fm.vo2max.toLocaleString('de-DE',{maximumFractionDigits:1})}</div>
-    <div class="sport-sub">VO2max · vom letzten Lauf (${formatDateShort(fm.date)})</div>
-    <div class="sport-sub" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">Fitnessalter: ${fm.fitnessAge != null ? fm.fitnessAge.toLocaleString('de-DE',{maximumFractionDigits:0}) + ' Jahre' : '– (liefert deine Uhr dafür nicht)'}</div>`;
+
+  const hrDays = days.filter(d => d.restingHr != null).slice(0, 5);
+  if(hrDays.length >= 3){
+    const latest = hrDays[0].restingHr;
+    const prevAvg = hrDays.slice(1).reduce((s,d)=> s + d.restingHr, 0) / (hrDays.length - 1);
+    if(latest - prevAvg >= 4) tips.push(`❤️ Ruhepuls heute ${latest} bpm, spürbar über deinem Schnitt (${prevAvg.toLocaleString('de-DE',{maximumFractionDigits:0})}) – Zeichen für Stress/wenig Erholung. Heute eher locker trainieren.`);
+    else if(prevAvg - latest >= 4) tips.push(`❤️ Ruhepuls heute ${latest} bpm, klar unter deinem Schnitt – gute Erholung, heute ist Platz für ein hartes Training.`);
+  }
+
+  const todayName = DOW_NAMES[new Date().getDay()];
+  const weekDates = getWeekDates();
+  const planned = WEEKDAYS.map((d,i)=>({day:d, date:weekDates[i]})).filter(x=>{
+    const s = (state.trainingPlan[x.day]||{}).sessionType || '';
+    return s && !s.toLowerCase().includes('ruhetag');
+  });
+  const pastPlanned = planned.filter(x => x.date <= todayStr());
+  if(pastPlanned.length){
+    const donePast = pastPlanned.filter(x=>{ const l = state.trainingLog.find(l=>l.date===x.date); return l && l.done; }).length;
+    if(donePast < pastPlanned.length){
+      const todaySession = escapeHtml((state.trainingPlan[todayName]||{}).sessionType || '');
+      tips.push(`🏋️ Diese Woche ${donePast} von ${pastPlanned.length} geplanten Sessions erledigt${todaySession ? ` – ${todaySession} steht heute noch aus` : ''}.`);
+    } else {
+      tips.push(`🏋️ Diese Woche bisher alle ${pastPlanned.length} geplanten Sessions erledigt – stark.`);
+    }
+  }
+
+  el.innerHTML = tips.length
+    ? `<div style="display:flex;flex-direction:column;gap:10px">${tips.map(t=>`<div class="sport-sub" style="line-height:1.55">${t}</div>`).join('')}</div>`
+    : '<div class="empty-state"><span class="ee-icon">💡</span>Braucht noch ein paar Tage Garmin-Daten für echte Vorschläge.</div>';
 }
 function renderSportPage(){
   const days = state.garminDays || [];
@@ -1922,7 +1964,7 @@ function renderSportPage(){
   const sleepBody = document.getElementById('sport-sleep-body');
   if(!connBody) return;
   renderActivities();
-  renderFitness();
+  renderOptimizationTips();
   if(!days.length){
     connBody.innerHTML = `<div class="empty-state"><span class="ee-icon">⌚</span>Noch keine Daten – Server einmal starten.</div>
       <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" id="sport-sync-btn" onclick="syncGarmin()">Jetzt synchronisieren</button>`;
@@ -1936,9 +1978,12 @@ function renderSportPage(){
       <span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block"></span>
       <span style="font-size:13px">Verbunden</span>
     </div>
-    <div class="sport-sub">${relTime(state.garminLastSync)}</div>
+    <div class="sport-stat">${today.steps != null ? today.steps.toLocaleString('de-DE') : '–'}</div>
+    <div class="sport-sub">Schritte heute</div>
+    <div class="sport-sub" style="margin-top:8px">${relTime(state.garminLastSync)}</div>
     <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" id="sport-sync-btn" onclick="syncGarmin()">Jetzt synchronisieren</button>`;
-  hrBody.innerHTML = `<div class="sport-stat">${today.restingHr ?? '–'}</div><div class="sport-sub">Schläge/Min · heute</div>`;
+  hrBody.innerHTML = `<div class="sport-stat">${today.restingHr ?? '–'}</div><div class="sport-sub">Schläge/Min · heute</div><div id="hr-chart-box" style="margin-top:10px"></div>`;
+  drawHrChart();
   const sleepDay = days.find(d => d.sleepSeconds != null) || today;
   const nightNote = sleepDay.date !== todayStr() ? `<div class="sport-sub" style="margin-top:6px">Nacht auf den ${formatDateShort(sleepDay.date)}</div>` : '';
   const hasStages = sleepDay.deepSleepSeconds!=null || sleepDay.lightSleepSeconds!=null || sleepDay.remSleepSeconds!=null;
@@ -2000,6 +2045,24 @@ function drawSleepChart(){
       ${dots}${labels}
     </svg>
     <p style="font-size:11px;color:var(--muted2);margin-top:6px">${days.length} von ${sleepChartRange} Tagen gecacht — Verlauf füllt sich täglich weiter.</p>`;
+}
+function drawHrChart(){
+  const box = document.getElementById('hr-chart-box');
+  if(!box) return;
+  const days = (state.garminDays || []).filter(d => d.restingHr != null).slice(0, 14).slice().reverse();
+  if(days.length < 2){ box.innerHTML = ''; return; }
+  const w = 260, h = 64, pad = 12;
+  const vals = days.map(d => d.restingHr);
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const stepX = (w-pad*2)/(days.length-1);
+  const pts = days.map((d,i)=>({x: pad + i*stepX, y: h - pad - ((d.restingHr-min)/span)*(h-pad*2)}));
+  const line = pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `M${pts[0].x.toFixed(1)},${h-pad} ` + pts.map(p=>`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ` L${pts[pts.length-1].x.toFixed(1)},${h-pad} Z`;
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:64px">
+      <path d="${areaPath}" fill="var(--accent-dim)" stroke="none"></path>
+      <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>
+    </svg>
+    <p style="font-size:10.5px;color:var(--muted2);margin-top:4px">Letzte ${days.length} Tage · ${min}–${max} bpm</p>`;
 }
 async function syncGarmin(){
   const btn = document.getElementById('sport-sync-btn');
@@ -2118,13 +2181,11 @@ async function checkIcloudPending(){
   renderIcloudBanner();
 }
 function renderIcloudBanner(){
-  const banner = document.getElementById('cal-review-banner');
-  if(icloudPending.length){
-    banner.style.display = 'block';
-    document.getElementById('cal-review-text').textContent = `${icloudPending.length} ${icloudPending.length===1?'neuer Termin':'neue Termine'} aus iCloud gefunden`;
-  } else {
-    banner.style.display = 'none';
-  }
+  // Kirill wollte keine auffaellige "N neue Termine gefunden"-Meldung mehr sehen — statt einer
+  // Banner-Zeile gibt's nur noch ein kleines, dezentes Icon neben Monat/Woche/Tag, das nur
+  // erscheint, wenn wirklich etwas zum Übernehmen wartet.
+  const btn = document.getElementById('cal-icloud-btn');
+  if(btn) btn.style.display = icloudPending.length ? 'inline-flex' : 'none';
 }
 function openIcloudModal(){
   const list = document.getElementById('icloud-list');
@@ -2191,7 +2252,12 @@ let assistantPhase = 'idle'; // idle | listening | thinking | speaking
 let conversationOn = false;
 
 function toggleAssistantPanel(){
-  document.getElementById('assistant-panel').classList.toggle('open');
+  const panel = document.getElementById('assistant-panel');
+  const opening = !panel.classList.contains('open');
+  panel.classList.toggle('open');
+  // Render/Neon schlafen nach Inaktivitaet ein (kostenlose Instanzen) - beim Oeffnen des Panels
+  // schon mal anklopfen, damit sie beim ersten echten Gespraech moeglichst schon wach sind.
+  if(opening) apiFetch('/health').catch(()=>{});
 }
 
 function setOrbSpeed(a,b,c,nodeDur){
@@ -2256,6 +2322,7 @@ function startAssistantTurn(){
   }
   if(assistantPhase === 'idle'){
     conversationOn = true;
+    assistantHadTurn = false;
     assistantListen();
   } else if(assistantPhase === 'listening'){
     endConversation(true);
@@ -2289,6 +2356,43 @@ function speakReply(text, audioBase64, onEnd){
   speechSynthesis.speak(utter);
 }
 
+let assistantHadTurn = false;
+/* Render/Neon sind kostenlose Instanzen und schlafen nach Inaktivität ein (30-60 Sek. Aufwachzeit).
+   Schlaegt der erste Versuch fehl (Netzwerkfehler oder Fehlertext vom Server), einmal automatisch
+   nochmal versuchen statt Kirill sofort mit einer Fehlermeldung sitzen zu lassen. */
+function sendAssistantMessage(transcript, isRetry){
+  if(!isRetry){
+    assistantPhase = 'thinking';
+    orbThink();
+  } else {
+    document.getElementById('assistant-state-label').textContent = 'Server braucht kurz, versuche nochmal…';
+  }
+  apiFetch('/assistant', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message: transcript})
+  }).then(res => res.json()).then(data => {
+    if(data.error){
+      if(!isRetry){ setTimeout(()=>sendAssistantMessage(transcript, true), 2500); return; }
+      showToast('⚠️ ' + data.error);
+      endConversation(false);
+      return;
+    }
+    assistantHadTurn = true;
+    assistantPhase = 'speaking';
+    orbSpeak(data.model);
+    addAssistantLine('assistant', data.reply, data.model, (data.actions||[]).length > 0);
+    loadState();
+    // Nach dem Aussprechen automatisch wieder zuhören — wie ein echtes Gespräch
+    speakReply(data.reply, data.audioBase64, function(){
+      if(conversationOn && assistantPhase === 'speaking') assistantListen();
+    });
+  }).catch(e => {
+    if(!isRetry){ setTimeout(()=>sendAssistantMessage(transcript, true), 2500); return; }
+    console.warn('Assistent nicht erreichbar.', e);
+    showToast('⚠️ Konnte den Assistenten nicht erreichen – läuft der Server noch?');
+    endConversation(false);
+  });
+}
 function assistantListen(){
   assistantPhase = 'listening';
   orbListen();
@@ -2297,35 +2401,16 @@ function assistantListen(){
     gotResult = true;
     const transcript = e.results[0][0].transcript;
     addAssistantLine('user', transcript);
-    assistantPhase = 'thinking';
-    orbThink();
-    apiFetch('/assistant', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({message: transcript})
-    }).then(res => res.json()).then(data => {
-      if(data.error){
-        showToast('⚠️ ' + data.error);
-        endConversation(false);
-        return;
-      }
-      assistantPhase = 'speaking';
-      orbSpeak(data.model);
-      addAssistantLine('assistant', data.reply, data.model, (data.actions||[]).length > 0);
-      loadState();
-      // Nach dem Aussprechen automatisch wieder zuhören — wie ein echtes Gespräch
-      speakReply(data.reply, data.audioBase64, function(){
-        if(conversationOn && assistantPhase === 'speaking') assistantListen();
-      });
-    }).catch(e => {
-      console.warn('Assistent nicht erreichbar.', e);
-      showToast('⚠️ Konnte den Assistenten nicht erreichen – läuft der Server noch?');
-      endConversation(false);
-    });
+    sendAssistantMessage(transcript, false);
   };
   assistantRecognition.onerror = function(e){
     gotResult = true;
     if(e.error !== 'no-speech' && e.error !== 'aborted'){
       showToast(e.error === 'not-allowed' ? 'Mikrofon-Zugriff verweigert.' : 'Spracherkennung hat nicht geklappt, nochmal versuchen.');
+    } else if(e.error === 'no-speech' && !assistantHadTurn){
+      // Noch nie in diesem Gespräch etwas verstanden -> wahrscheinlich falsches Mikrofon,
+      // nicht nur eine normale Gesprächspause. Einmalig ein Hinweis, kein Toast-Spam bei jeder Pause.
+      showToast('Kein Ton empfangen – richtiges Mikrofon in Browser/System ausgewählt?');
     }
     // nichts gesagt = Gespräch ist vorbei
     if(assistantPhase === 'listening') endConversation(true);
@@ -2359,13 +2444,21 @@ function renderVerlaufPage(){
 }
 
 /* ── 3D-TILT AUF KARTEN + NAV ── */
+// Referenzgroesse einer "normalen" Karte (News/Schlaf/Tagebuch zu). Groessere Karten
+// (Trainingsplan-Tabelle, volle To-Do-Liste, Kalender-Monatsraster, aufgeklapptes Tagebuch)
+// kippen mit demselben Winkel optisch staerker, weil ihre Raender weiter vom Drehpunkt (Kartenmitte)
+// entfernt sind. Kirill wollte, dass sich JEDE Karte gleich viel bewegt, egal wie groß/klein sie ist —
+// deshalb wird der Winkel live pro Achse an Hoehe/Breite der Karte angeglichen statt fix zu sein.
+const TILT_REF_PX = 260;
 function attachTilt(el, maxTiltDeg){
   el.addEventListener('mousemove', function(e){
     const rect = el.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width - 0.5;
     const py = (e.clientY - rect.top) / rect.height - 0.5;
-    const rotateX = -py * maxTiltDeg * 2;
-    const rotateY = px * maxTiltDeg * 2;
+    const tiltX = maxTiltDeg * Math.min(1, TILT_REF_PX / rect.height);
+    const tiltY = maxTiltDeg * Math.min(1, TILT_REF_PX / rect.width);
+    const rotateX = -py * tiltX * 2;
+    const rotateY = px * tiltY * 2;
     el.style.transition = 'transform .15s ease-out';
     el.style.transform = `perspective(700px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg)`;
   });
@@ -2380,9 +2473,9 @@ function initTilt(){
   // Auf Touch-Geräten gar kein Kippen: iOS feuert bei Fingertipps mousemove-Events,
   // dadurch "springen" die Karten unterm Finger — genau das soll nicht passieren.
   if(window.matchMedia('(hover: none)').matches) return;
-  // Nochmal um 80 % reduziert (Kirill: Buttons in den Karten waren beim Zielen schwer zu treffen,
-  // weil sich der Inhalt unterm Mauszeiger noch zu stark mitverschoben hat). Kalender bleibt zusätzlich minimal.
-  document.querySelectorAll('.card').forEach(el => attachTilt(el, el.closest('#view-calendar') ? 0.36 : 1.2));
+  // Alle Karten bekommen denselben Basiswinkel (nochmal ~15% weniger als zuvor) — die
+  // Groessen-Angleichung oben sorgt dafuer, dass große/aufgeklappte Karten trotzdem nicht staerker wirken.
+  document.querySelectorAll('.card').forEach(el => attachTilt(el, 1.0));
   document.querySelectorAll('.nav-item').forEach(el => attachTilt(el, 1.8));
 }
 

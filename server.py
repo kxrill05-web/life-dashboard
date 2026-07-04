@@ -630,6 +630,23 @@ def _cache_set(conn, key, payload):
     return fetched_at
 
 
+def _fetch_article_excerpt(url, max_chars=650):
+    """Best-Effort: die RSS-<description> von Tagesschau ist nur ein Einzeiler. Holt stattdessen
+    die ersten echten Absaetze von der Artikelseite (<p class="textabsatz ...">), damit die
+    News-Karte beim Aufklappen mehr zeigt, ohne dass Kirill auf den Artikel klicken muss.
+    Bricht Tagesschau die Seitenstruktur um, faellt der Aufrufer auf die RSS-Kurzbeschreibung zurueck."""
+    try:
+        doc = _http_get(url, timeout=8)
+        paras = re.findall(r'<p class="textabsatz[^"]*">(.*?)</p>', doc, re.S)
+        text = " ".join(html.unescape(re.sub(r"<[^>]+>", "", p)).strip() for p in paras[:4])
+        text = re.sub(r"\s+", " ", text).strip()
+        if len(text) <= max_chars:
+            return text or None
+        return text[:max_chars].rsplit(" ", 1)[0] + "…"
+    except Exception:
+        return None
+
+
 def fetch_news():
     root = ET.fromstring(_http_get(NEWS_FEED_URL))
     items = []
@@ -647,15 +664,21 @@ def fetch_news():
             time_label = pub.astimezone().strftime("%H:%M")
         except ValueError:
             pass
+        short_text = html.unescape(re.sub(r"<[^>]+>", "", desc)).strip()
         items.append({
             "title": html.unescape(title),
-            "text": html.unescape(re.sub(r"<[^>]+>", "", desc)).strip(),
+            "text": short_text,
             "link": link,
             "image": img.group(1) if img else None,
             "time": time_label,
         })
         if len(items) >= 5:
             break
+    # Artikeltext erst NACH der 5er-Auswahl anreichern (nicht fuer jedes Feed-Item, spart Requests)
+    for item in items:
+        excerpt = _fetch_article_excerpt(item["link"]) if item["link"] else None
+        if excerpt and len(excerpt) > len(item["text"]):
+            item["text"] = excerpt
     return items
 
 
@@ -1116,11 +1139,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        split = urllib.parse.urlsplit(self.path)
+        path = split.path
+        if path == "/health":
+            # Bewusst ohne Login-Zwang: reiner Weck-Ping fuers Frontend, damit Render (Web Service)
+            # und Neon (Postgres, schlaeft bei Inaktivitaet separat ein) schon hochfahren, BEVOR
+            # der eigentliche /assistant-Aufruf kommt - keine sensiblen Daten drin.
+            try:
+                conn = get_db()
+                conn.execute("SELECT 1")
+                conn.close()
+                self._json(200, {"ok": True})
+            except Exception as e:
+                self._json(200, {"ok": False, "detail": str(e)})
+            return
         if not self._authed():
             self._json(401, {"error": "nicht angemeldet"})
             return
-        split = urllib.parse.urlsplit(self.path)
-        path = split.path
         qs = urllib.parse.parse_qs(split.query)
         force = qs.get("force", ["0"])[0] == "1"
         if path == "/state":
