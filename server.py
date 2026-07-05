@@ -204,6 +204,16 @@ def init_db():
             color TEXT NOT NULL,
             position INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS buchhaltung_stand (
+            jahr INTEGER PRIMARY KEY,
+            einnahmen_cent INTEGER NOT NULL DEFAULT 0,
+            ausgaben_cent INTEGER NOT NULL DEFAULT 0,
+            gewinn_cent INTEGER NOT NULL DEFAULT 0,
+            offene_anzahl INTEGER NOT NULL DEFAULT 0,
+            monate_json TEXT NOT NULL DEFAULT '[]',
+            kategorien_json TEXT NOT NULL DEFAULT '[]',
+            synced_at TEXT
+        );
     """)
     with conn:
         for day in WEEKDAYS:
@@ -278,12 +288,23 @@ def load_state():
                         for r in conn.execute("SELECT * FROM supplements_log ORDER BY date DESC LIMIT 370")]
     last_sync_row = conn.execute("SELECT value FROM sync_meta WHERE key='garmin_last_sync'").fetchone()
     fm_row = conn.execute("SELECT value FROM sync_meta WHERE key='fitness_metrics'").fetchone()
+    # Buchhaltung: NUR aggregierte Jahres-/Monats-/Kategorien-Summen (kein Auftraggeber,
+    # keine Einzelbuchung) -- bewusste Entscheidung, da diese Tabelle in der Cloud liegt.
+    buchhaltung_jahre = {}
+    for r in conn.execute("SELECT * FROM buchhaltung_stand ORDER BY jahr DESC"):
+        buchhaltung_jahre[str(r["jahr"])] = dict(
+            einnahmenCent=r["einnahmen_cent"], ausgabenCent=r["ausgaben_cent"],
+            gewinnCent=r["gewinn_cent"], offeneAnzahl=r["offene_anzahl"],
+            monate=json.loads(r["monate_json"] or "[]"),
+            kategorien=json.loads(r["kategorien_json"] or "[]"),
+            syncedAt=r["synced_at"])
     conn.close()
     return {"todos": todos, "events": events, "categories": categories, "trainingPlan": training_plan, "trainingLog": training_log,
             "journalEntries": journal_entries, "goals": goals, "assistantLog": assistant_log,
             "garminDays": garmin_days, "garminActivities": garmin_activities, "supplementsLog": supplements_log,
             "fitnessMetrics": json.loads(fm_row["value"]) if fm_row else None,
-            "garminLastSync": last_sync_row["value"] if last_sync_row else None}
+            "garminLastSync": last_sync_row["value"] if last_sync_row else None,
+            "buchhaltung": buchhaltung_jahre}
 
 
 def compute_next_repeat_date(from_date_str, repeat_type, repeat_weekdays, repeat_interval):

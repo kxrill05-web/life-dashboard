@@ -488,6 +488,7 @@ body{
     <button class="nav-item" data-view="training">Trainingsplan</button>
     <button class="nav-item" data-view="todos">To-Dos</button>
     <button class="nav-item" data-view="calendar">Kalender</button>
+    <button class="nav-item" data-view="buchhaltung">Buchhaltung</button>
   </nav>
   <button class="refresh-btn" id="refresh-btn" onclick="refreshAll()" title="Alles neu laden (Daten, News, Märkte)" aria-label="Alles neu laden">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -684,6 +685,27 @@ body{
 
       <div class="cal-grid" id="cal-grid"></div>
       <div id="cal-list"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ BUCHHALTUNG ═══════════ -->
+  <section id="view-buchhaltung" class="view">
+    <div class="page-title">Buchhaltung</div>
+    <div class="page-sub">Nur Summen aus dem lokalen Ledger — keine Einzelbuchungen, kein Auftraggeber-Detail</div>
+
+    <div class="card-grid">
+      <div class="card" style="align-self:start">
+        <div class="card-head"><h3>Jahresübersicht</h3><span class="card-tag" id="bh-jahr-tag"></span></div>
+        <div id="bh-kpi-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Pro Monat</h3></div>
+        <div id="bh-monate-body"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Kategorien</h3></div>
+        <div id="bh-kategorien-body"></div>
+      </div>
     </div>
   </section>
 
@@ -960,7 +982,7 @@ function defaultCategories(){
 function defaultState(){
   const plan = {};
   WEEKDAYS.forEach(d => plan[d] = {sessionType:'', description:''});
-  return { todos:[], events:[], categories:defaultCategories(), trainingPlan:plan, trainingLog:[], journalEntries:[], goals:[], assistantLog:[], garminDays:[], garminActivities:[], supplementsLog:[], fitnessMetrics:null, garminLastSync:null };
+  return { todos:[], events:[], categories:defaultCategories(), trainingPlan:plan, trainingLog:[], journalEntries:[], goals:[], assistantLog:[], garminDays:[], garminActivities:[], supplementsLog:[], fitnessMetrics:null, garminLastSync:null, buchhaltung:{} };
 }
 let state = defaultState();
 async function loadState(){
@@ -2578,6 +2600,46 @@ function initTilt(){
 }
 
 /* ── ALLES NEU RENDERN ── */
+function renderBuchhaltungPage(){
+  const kpiEl = document.getElementById('bh-kpi-body');
+  if(!kpiEl) return;
+  const monateEl = document.getElementById('bh-monate-body');
+  const katEl = document.getElementById('bh-kategorien-body');
+  const tagEl = document.getElementById('bh-jahr-tag');
+  const jahre = Object.keys(state.buchhaltung||{}).sort().reverse();
+  if(!jahre.length){
+    kpiEl.innerHTML = '<div class="sport-sub">Noch keine Daten – läuft über "dashboard-sync" in der Buchhaltung.</div>';
+    monateEl.innerHTML = ''; katEl.innerHTML = ''; tagEl.textContent = '';
+    return;
+  }
+  const jahr = jahre[0];
+  const d = state.buchhaltung[jahr];
+  const bhEuro = c => ((c||0)/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  tagEl.textContent = jahr;
+  kpiEl.innerHTML = `
+    <div class="sport-stat" style="color:#2dd4bf">${bhEuro(d.einnahmenCent)}</div>
+    <div class="sport-sub">Einnahmen</div>
+    <div class="sport-stat" style="margin-top:12px;color:#ff6b6b">${bhEuro(d.ausgabenCent)}</div>
+    <div class="sport-sub">Ausgaben</div>
+    <div class="sport-stat" style="margin-top:12px;color:${d.gewinnCent>=0?'#2dd4bf':'#ff6b6b'}">${bhEuro(d.gewinnCent)}</div>
+    <div class="sport-sub">Gewinn</div>
+    <div class="sport-sub" style="margin-top:12px;padding-top:9px;border-top:1px solid var(--border)">${d.offeneAnzahl||0} noch zu prüfen · Stand ${d.syncedAt ? new Date(d.syncedAt).toLocaleDateString('de-DE') : '–'}</div>`;
+  monateEl.innerHTML = (d.monate||[]).map(m => `
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${escapeHtml(m.monat)}</span>
+      <span style="color:#2dd4bf">${bhEuro(m.einnahmenCent)}</span>
+      <span style="color:#ff6b6b">${bhEuro(m.ausgabenCent)}</span>
+    </div>`).join('') || '<div class="sport-sub">Keine Monatsdaten.</div>';
+  const maxKat = Math.max(1, ...((d.kategorien||[]).map(k => Math.abs(k.betragCent))));
+  katEl.innerHTML = (d.kategorien||[]).map(k => `
+    <div style="margin:8px 0">
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span>${escapeHtml(k.kategorie)}</span><span>${bhEuro(k.betragCent)}</span></div>
+      <div style="background:var(--border);border-radius:4px;height:6px;margin-top:3px">
+        <div style="background:#6c63ff;border-radius:4px;height:6px;width:${Math.min(100, Math.abs(k.betragCent)/maxKat*100)}%"></div>
+      </div>
+    </div>`).join('') || '<div class="sport-sub">Keine Kategorien.</div>';
+}
+
 function renderAll(){
   renderOverviewDate();
   renderReviewBanner();
@@ -2592,6 +2654,7 @@ function renderAll(){
   renderVerlaufPage();
   renderTrainingPlanPage();
   renderTodosPage();
+  renderBuchhaltungPage();
   if(document.getElementById('view-calendar').classList.contains('active')) renderCalendar();
   if(document.getElementById('view-sport').classList.contains('active')) renderSportPage();
 }
