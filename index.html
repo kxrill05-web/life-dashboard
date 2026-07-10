@@ -1329,8 +1329,8 @@ function renderReviewBanner(){
 }
 
 /* ── TAGEBUCH ── */
-let journalMood = '🙂';
-let journalProd = 3;
+let journalMood = null;
+let journalProd = null;
 let journalRevealed = false;
 let journalTargetDate = null;
 function journalRecentDays(){
@@ -1421,11 +1421,17 @@ function saveJournalEntry(){
     showToast('Für die letzten 3 Tage ist schon alles eingetragen');
     return;
   }
+  if(!journalMood || !journalProd){
+    showToast('Bitte Stimmung und Produktivität auswählen');
+    return;
+  }
   const noteEl = document.getElementById('journal-note');
   const note = noteEl.value.trim();
   const savedDate = journalTargetDate;
   state.journalEntries.unshift({id:newId(), date:savedDate, mood:journalMood, productivity:journalProd, note});
   noteEl.value = '';
+  journalMood = null;
+  journalProd = null;
   journalTargetDate = null;
   update();
   showToast(savedDate===todayStr() ? 'Eintrag gespeichert' : `Eintrag für ${formatDateShort(savedDate)} gespeichert`);
