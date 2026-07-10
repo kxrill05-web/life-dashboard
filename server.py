@@ -425,18 +425,41 @@ def today_str():
 
 
 # ── PHASE 3: GARMIN-SYNC (Best-Effort, gecacht in garmin_days) ──────
+def _garmin_client(conn):
+    """Loggt bei Garmin ein - bevorzugt per gecachtem Session-Token aus sync_meta.
+    Vermeidet dadurch die Passwort-Login-Route (sso.garmin.com/mobile/api/login), die Garmin
+    bei zu haeufigen Logins (z.B. jeder Render-Neustart bei Inaktivitaet) mit 429 blockiert."""
+    client = garminconnect.Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
+    row = conn.execute("SELECT value FROM sync_meta WHERE key='garmin_tokenstore'").fetchone()
+    if row:
+        try:
+            client.garth.loads(row["value"])
+            client.display_name = client.garth.profile["displayName"]
+            client.full_name = client.garth.profile["fullName"]
+            settings = client.garth.connectapi("/userprofile-service/userprofile/user-settings")
+            client.unit_system = settings["userData"]["measurementSystem"]
+            return client
+        except Exception as e:
+            print(f"[garmin_sync] Gecachter Token ungueltig ({e}), neuer Passwort-Login noetig")
+    client.login()
+    with conn:
+        conn.execute("""INSERT INTO sync_meta (key, value) VALUES ('garmin_tokenstore', ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value""", (client.garth.dumps(),))
+    return client
+
+
 def garmin_sync(days_back=3):
     """Holt Schlaf/Puls/Schritte der letzten `days_back` Tage von Garmin und cached sie lokal.
     Best-Effort: bei Fehlern (Login/Netzwerk/API-Aenderung) bleibt die letzte gecachte DB unveraendert."""
     if not GARMIN_EMAIL or not GARMIN_PASSWORD:
         return False, "Garmin-Zugangsdaten fehlen in .env"
+    conn = get_db()
     try:
-        client = garminconnect.Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-        client.login()
+        client = _garmin_client(conn)
     except Exception as e:
+        conn.close()
         return False, f"Garmin-Login fehlgeschlagen: {e}"
 
-    conn = get_db()
     synced_days = []
     try:
         with conn:

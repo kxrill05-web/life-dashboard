@@ -3,7 +3,7 @@ services:
     name: life-dashboard
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 server.py
+    startCommand: python3 -u server.py
     envVars:
       - key: GEMINI_API_KEY
         sync: false
