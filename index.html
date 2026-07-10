@@ -224,6 +224,8 @@ body{
 .up-title{font-size:12.5px}
 
 /* ── TAGEBUCH ── */
+.jd-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.jd-row .range-btn:disabled{opacity:.35;cursor:default}
 .mood-row{display:flex;gap:8px;margin-bottom:14px}
 .mood-opt{font-size:20px;cursor:pointer;opacity:.4;transition:transform .18s ease,opacity .18s ease}
 .mood-opt:hover{transform:translateY(-3px) scale(1.15);opacity:.75}
@@ -548,6 +550,7 @@ body{
           <h3>Tagebuch</h3>
           <span class="chev">▾</span>
         </div>
+        <div class="jd-row" id="journal-date-row"></div>
         <div class="mood-row" id="journal-mood-row">
           <span class="mood-opt" data-m="😞" onclick="selectJournalMood(this)">😞</span>
           <span class="mood-opt" data-m="😐" onclick="selectJournalMood(this)">😐</span>
@@ -567,7 +570,7 @@ body{
         </div>
         <div class="journal-expand" id="journal-expand">
           <textarea class="note-input" id="journal-note" placeholder="Was geht dir durch den Kopf...?"></textarea>
-          <button class="btn btn-accent btn-sm" onclick="saveJournalEntry()">Speichern</button>
+          <button class="btn btn-accent btn-sm" id="journal-save-btn" onclick="saveJournalEntry()">Speichern</button>
           <div class="entries-head">
             <span>Stimmungsverlauf</span>
             <span style="display:flex;gap:5px">
@@ -1329,6 +1332,37 @@ function renderReviewBanner(){
 let journalMood = '🙂';
 let journalProd = 3;
 let journalRevealed = false;
+let journalTargetDate = null;
+function journalRecentDays(){
+  const days = [];
+  for(let i=0;i<3;i++){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = todayStr(d);
+    const has = (state.journalEntries||[]).some(j=>j.date===ds);
+    days.push({date:ds, label: i===0?'Heute':i===1?'Gestern':formatDateShort(ds), has});
+  }
+  return days;
+}
+function renderJournalDateRow(){
+  const row = document.getElementById('journal-date-row');
+  if(!row) return;
+  const days = journalRecentDays();
+  if(!journalTargetDate || !days.some(d=>d.date===journalTargetDate && !d.has)){
+    const firstMissing = days.find(d=>!d.has);
+    journalTargetDate = firstMissing ? firstMissing.date : null;
+  }
+  row.innerHTML = days.map(d => `<button type="button" class="range-btn ${d.date===journalTargetDate?'active':''}"
+      ${d.has?'disabled':`onclick="selectJournalDate('${d.date}')"`}>${d.has?'✓ ':''}${d.label}</button>`).join('');
+  const saveBtn = document.getElementById('journal-save-btn');
+  if(saveBtn){
+    saveBtn.disabled = !journalTargetDate;
+    saveBtn.textContent = journalTargetDate ? 'Speichern' : 'Für die letzten 3 Tage schon alles eingetragen';
+  }
+}
+function selectJournalDate(date){
+  journalTargetDate = date;
+  renderJournalDateRow();
+}
 function toggleJournalCard(){
   const card = document.getElementById('journal-card');
   card.classList.toggle('open');
@@ -1383,12 +1417,18 @@ function setJournalProd(v){
   });
 }
 function saveJournalEntry(){
+  if(!journalTargetDate){
+    showToast('Für die letzten 3 Tage ist schon alles eingetragen');
+    return;
+  }
   const noteEl = document.getElementById('journal-note');
   const note = noteEl.value.trim();
-  state.journalEntries.unshift({id:newId(), date:todayStr(), mood:journalMood, productivity:journalProd, note});
+  const savedDate = journalTargetDate;
+  state.journalEntries.unshift({id:newId(), date:savedDate, mood:journalMood, productivity:journalProd, note});
   noteEl.value = '';
+  journalTargetDate = null;
   update();
-  showToast('Eintrag gespeichert');
+  showToast(savedDate===todayStr() ? 'Eintrag gespeichert' : `Eintrag für ${formatDateShort(savedDate)} gespeichert`);
 }
 function toggleJournalReveal(){
   journalRevealed = !journalRevealed;
@@ -1396,6 +1436,7 @@ function toggleJournalReveal(){
   renderJournalCard();
 }
 function renderJournalCard(){
+  renderJournalDateRow();
   document.querySelectorAll('#journal-mood-row .mood-opt').forEach(m=>m.classList.toggle('active', m.dataset.m===journalMood));
   document.querySelectorAll('#journal-prod-bars .pbar').forEach(b=>{
     b.classList.toggle('filled', parseInt(b.dataset.v,10) <= journalProd);
